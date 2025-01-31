@@ -6,13 +6,16 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 
-// NFTの型定義
+// NFTの型定義を修正
 interface NFT {
     id: string
-    name: string
-    image_url: string
-    price: number
-    status: 'available' | 'sold' | 'locked'
+    user_id: string
+    nft: {
+        id: string
+        name: string
+        image_url: string
+        price: number
+    }
     created_at: string
 }
 
@@ -35,18 +38,33 @@ export default function DashboardPage() {
                 return
             }
             setUser(session.user)
-            await fetchData()
         } catch (error) {
             console.error('Error checking auth:', error)
             setError('認証エラーが発生しました')
         }
     }
 
+    useEffect(() => {
+        if (user) {
+            fetchData()
+        }
+    }, [user])
+
     const fetchData = async () => {
+        if (!user) return
+
         try {
             const { data: nfts, error: nftsError } = await supabase
                 .from('user_nfts')
-                .select('*, nft_settings(*)')
+                .select(`
+                    *,
+                    nft:nfts (
+                        id,
+                        name,
+                        price,
+                        image_url
+                    )
+                `)
                 .eq('user_id', user.id)
 
             if (nftsError) throw nftsError
@@ -135,16 +153,16 @@ export default function DashboardPage() {
                             <div className="text-center text-gray-400">読み込み中...</div>
                         ) : (
                             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                                {userNFTs.map((nft) => (
-                                    <div key={nft.id} className="bg-gray-700 rounded-lg overflow-hidden">
+                                {userNFTs.map((userNft) => (
+                                    <div key={userNft.id} className="bg-gray-700 rounded-lg overflow-hidden">
                                         <img
-                                            src={`/images/nfts/${nft.image_url}`}
-                                            alt={nft.name}
+                                            src={`/images/nfts/${userNft.nft.image_url}`}
+                                            alt={userNft.nft.name}
                                             className="w-full aspect-square object-cover"
                                         />
                                         <div className="p-4">
-                                            <h3 className="font-bold text-white text-lg mb-2">{nft.name}</h3>
-                                            <p className="text-gray-400">${nft.price.toLocaleString()}</p>
+                                            <h3 className="font-bold text-white text-lg mb-2">{userNft.nft.name}</h3>
+                                            <p className="text-gray-400">${userNft.nft.price.toLocaleString()}</p>
                                         </div>
                                     </div>
                                 ))}
