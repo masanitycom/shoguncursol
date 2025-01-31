@@ -23,29 +23,32 @@ export default function LoginPage() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
-        setError(null)
         setLoading(true)
+        setError(null)
 
         try {
-            if (!email || !password) {
-                throw new Error('メールアドレスとパスワードを入力してください')
-            }
-
-            const { data: { user }, error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password
             })
 
             if (error) throw error
 
-            if (user.email === 'testadmin@gmail.com') {
+            // ユーザーが存在することを確認
+            if (!data.user) {
+                throw new Error('ユーザーが見つかりません')
+            }
+
+            // ここでユーザーが確実に存在する
+            if (data.user.email === 'testadmin@gmail.com') {
                 router.push('/admin/dashboard')
             } else {
                 router.push('/dashboard')
             }
-        } catch (error: any) {
+
+        } catch (error) {
             console.error('Login error:', error)
-            setError(getErrorMessage(error))
+            setError(error instanceof Error ? error.message : 'ログインに失敗しました')
         } finally {
             setLoading(false)
         }

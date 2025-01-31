@@ -23,10 +23,17 @@ interface NFTMaster {
     price: number
 }
 
+interface NFT {
+    id: string
+    name: string
+    price: number
+}
+
 interface UserNFT {
     id: string
-    nft_master: NFTMaster
-    purchase_date: string
+    user_id: string
+    nft: NFT
+    created_at: string
 }
 
 interface OrganizationUser {
@@ -36,6 +43,17 @@ interface OrganizationUser {
     first_investment_date: string | null
     last_investment_date: string | null
     total_investment: number
+}
+
+interface UserData {
+    id: string
+    name: string
+    investment_amount: number
+    total_team_investment: number
+    first_investment_date: string | null
+    last_investment_date: string | null
+    children: UserData[]
+    level: number
 }
 
 interface User {
@@ -81,7 +99,6 @@ export default function AdminOrganizationPage() {
 
     const fetchUsers = async () => {
         try {
-            // 別々のクエリを実行
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
                 .select('*')
@@ -89,46 +106,53 @@ export default function AdminOrganizationPage() {
 
             if (usersError) throw usersError
 
-            // 各ユーザーのNFT情報を取得
             const { data: nftsData, error: nftsError } = await supabase
                 .from('user_nfts')
                 .select(`
                     id,
                     user_id,
-                    purchase_date,
-                    nfts (
+                    nft:nft_settings!inner (
                         id,
                         name,
                         price
-                    )
+                    ),
+                    created_at
                 `)
 
             if (nftsError) throw nftsError
 
-            // ユーザーデータとNFTデータを結合
-            const usersWithInvestments = usersData.map(user => {
-                const userNfts = nftsData.filter(nft => nft.user_id === user.id)
+            const userNfts = nftsData as unknown as UserNFT[]
+
+            const usersWithInvestments = await Promise.all(usersData.map(async user => {
+                const userNfts = nftsData
+                    .filter(nft => nft.user_id === user.id)
+                    .map(nft => ({
+                        ...nft,
+                        nft: nft.nft[0]
+                    }))
+
                 const investmentDates = userNfts
-                    .map(nft => new Date(nft.purchase_date))
+                    .map(nft => new Date(nft.created_at))
                     .sort((a, b) => a.getTime() - b.getTime())
 
                 return {
                     ...user,
                     first_investment_date: investmentDates[0]?.toISOString() || null,
                     last_investment_date: investmentDates[investmentDates.length - 1]?.toISOString() || null,
-                    total_investment: userNfts.reduce((sum, nft) => sum + (nft.nfts?.price || 0), 0)
+                    total_investment: userNfts.reduce((sum, nft) => sum + (nft.nft?.price || 0), 0)
                 }
-            })
+            }))
 
-            // ユーザーを階層構造に変換
-            const usersMap = new Map()
+            const usersMap = new Map<string, User>()
             usersWithInvestments.forEach(user => {
                 usersMap.set(user.id, { ...user, children: [] })
             })
 
-            const rootUsers = []
+            const rootUsers: User[] = []
             usersWithInvestments.forEach(user => {
                 const userWithChildren = usersMap.get(user.id)
+                if (!userWithChildren) return
+
                 if (user.referrer_id) {
                     const parent = usersMap.get(user.referrer_id)
                     if (parent) {
@@ -144,11 +168,10 @@ export default function AdminOrganizationPage() {
             setUsers(rootUsers)
         } catch (error) {
             console.error('Error fetching users:', error)
-            setError(error.message)
+            setError(error instanceof Error ? error.message : 'An unknown error occurred')
         }
     }
 
-    // ユーザーの展開/折りたたみを切り替え
     const toggleExpand = (userId: string) => {
         const newExpanded = new Set(expandedUsers)
         if (newExpanded.has(userId)) {
@@ -159,7 +182,6 @@ export default function AdminOrganizationPage() {
         setExpandedUsers(newExpanded)
     }
 
-    // 検索フィルター
     const filterUsers = (users: User[]): User[] => {
         if (!searchTerm) return users
         const term = searchTerm.toLowerCase()
@@ -180,7 +202,6 @@ export default function AdminOrganizationPage() {
         return filtered
     }
 
-    // ページネーション
     const paginateUsers = (users: User[]): User[] => {
         const startIndex = (currentPage - 1) * usersPerPage
         return users.slice(startIndex, startIndex + usersPerPage)
@@ -276,7 +297,6 @@ export default function AdminOrganizationPage() {
                             {paginateUsers(filterUsers(users)).map(user => renderUserTree(user))}
                         </div>
 
-                        {/* ページネーション */}
                         <div className="mt-4 flex justify-center space-x-2">
                             {Array.from({ length: Math.ceil(users.length / usersPerPage) }).map((_, i) => (
                                 <button

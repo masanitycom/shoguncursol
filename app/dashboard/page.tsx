@@ -4,9 +4,20 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
+// NFTの型定義
+interface NFT {
+    id: string
+    name: string
+    image_url: string
+    price: number
+    status: 'available' | 'sold' | 'locked'
+    created_at: string
+}
+
 export default function DashboardPage() {
+    // 型を指定してuseStateを初期化
+    const [userNFTs, setUserNFTs] = useState<NFT[]>([])
     const [loading, setLoading] = useState(true)
-    const [userNFTs, setUserNFTs] = useState([])
 
     useEffect(() => {
         fetchData()
@@ -16,10 +27,13 @@ export default function DashboardPage() {
         try {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) return
+            
             const { data: nfts } = await supabase
                 .from('nfts')
                 .select('*')
-            setUserNFTs(nfts || [])
+            
+            // 型アサーションを使用するか、型ガードを実装
+            setUserNFTs(nfts as NFT[] || [])
         } catch (error) {
             console.error('Error:', error)
         } finally {
@@ -27,10 +41,14 @@ export default function DashboardPage() {
         }
     }
 
-    if (loading) return null
+    if (loading) {
+        return <div>Loading...</div>
+    }
 
     return (
         <>
+            <h1 className="text-2xl font-bold text-white mb-6">ダッシュボード</h1>
+
             {!userNFTs.length && (
                 <div className="text-gray-400 mb-6">
                     NFTを所有していません
@@ -88,23 +106,21 @@ export default function DashboardPage() {
             {/* 所有NFT一覧 */}
             <div className="bg-gray-800 rounded-lg p-6">
                 <h2 className="text-xl font-bold text-white mb-4">所有NFT一覧</h2>
-                {userNFTs.length > 0 && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {userNFTs.map((nft: any) => (
-                            <div key={nft.id} className="bg-gray-700 rounded-lg overflow-hidden">
-                                <img
-                                    src={`/images/nfts/${nft.image_url}`}
-                                    alt={nft.name}
-                                    className="w-full aspect-square object-cover"
-                                />
-                                <div className="p-3">
-                                    <h3 className="font-bold text-white text-sm mb-1">{nft.name}</h3>
-                                    <p className="text-sm text-gray-400">${nft.price.toLocaleString()}</p>
-                                </div>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {userNFTs.map((nft) => (
+                        <div key={nft.id} className="bg-gray-700 rounded-lg overflow-hidden">
+                            <img
+                                src={`/images/nfts/${nft.image_url}`}
+                                alt={nft.name}
+                                className="w-full aspect-square object-cover"
+                            />
+                            <div className="p-3">
+                                <h3 className="font-bold text-white text-sm mb-1">{nft.name}</h3>
+                                <p className="text-sm text-gray-400">${nft.price.toLocaleString()}</p>
                             </div>
-                        ))}
-                    </div>
-                )}
+                        </div>
+                    ))}
+                </div>
             </div>
         </>
     )
