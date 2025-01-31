@@ -15,27 +15,34 @@ import {
 import DailyRatesDisplay from '@/components/DailyRatesDisplay'
 import { LEVELS } from '@/lib/constants/levels'
 
-// NFTの型定義を更新
+// NFTの型定義
 interface NFT {
-    id: string
-    user_id: string
-    created_at: string
-    approved_at: string
-    nfts: {
-        id: string
-        name: string
-        image_url: string
-        price: number
-        description?: string
-        status: 'active' | 'inactive'
-        daily_rate: number
-    }
+    id: string;
+    name: string;
+    price: number;
+    daily_rate: number;
+    status: string;
+    image_url: string;
+    description: string;
+    created_at: string;
+    owner_id: string;
+}
+
+// NFT購入リクエストの型定義
+interface NFTPurchaseRequest {
+    id: string;
+    user_id: string;
+    created_at: string;
+    approved_at: string | null;
+    nft_id: string;
+    nfts: NFT;
 }
 
 export default function DashboardPage() {
     const router = useRouter()
     const [user, setUser] = useState<any>(null)
     const [userNFTs, setUserNFTs] = useState<NFT[]>([])
+    const [requests, setRequests] = useState<NFTPurchaseRequest[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [levelInfo, setLevelInfo] = useState<{ maxLine: number; otherLines: number; personalInvestment: number } | null>(null)
@@ -63,28 +70,18 @@ export default function DashboardPage() {
                 setUserData(userData)
 
                 // NFTデータの取得
-                const { data: nfts, error: nftsError } = await supabase
+                const { data: requests, error: nftsError } = await supabase
                     .from('nft_purchase_requests')
                     .select(`
-                        id,
-                        user_id,
-                        created_at,
-                        approved_at,
-                        nfts:nft_id (
-                            id,
-                            name,
-                            price,
-                            image_url,
-                            description,
-                            daily_rate,
-                            status
-                        )
+                        *,
+                        nfts (*)
                     `)
                     .eq('user_id', session.user.id)
                     .eq('status', 'approved')
 
                 if (nftsError) throw nftsError
-                setUserNFTs(nfts || [])
+                const nfts = requests?.map(request => request.nfts) || []
+                setUserNFTs(nfts)
 
             } catch (error) {
                 console.error('Error initializing dashboard:', error)
@@ -101,7 +98,7 @@ export default function DashboardPage() {
     const calculateTotalInvestment = (nfts: NFT[]): number => {
         return nfts.reduce((total, purchase) => {
             // nft_purchase_requestsのデータ構造に合わせて修正
-            return total + (purchase.nfts?.price || 0)
+            return total + (purchase.price || 0)
         }, 0)
     }
 
@@ -173,6 +170,124 @@ export default function DashboardPage() {
         }
     }, [user, userNFTs])
 
+    // 営業日数を計算する関数
+    const calculateBusinessDays = (startDate: Date, endDate: Date) => {
+        let count = 0;
+        const current = new Date(startDate);
+        
+        while (current <= endDate) {
+            const dayOfWeek = current.getDay();
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) count++; // 0=日曜, 6=土曜
+            current.setDate(current.getDate() + 1);
+        }
+        
+        return count;
+    };
+
+    // 複利を含めた報酬を計算する関数
+    const calculateCompoundRewards = (nftRequests: NFTPurchaseRequest[]) => {
+        console.log('Calculating compound rewards for NFTs:', JSON.stringify(nftRequests, null, 2));
+        const today = new Date();
+        
+        const totalRewards = nftRequests.reduce((total, request) => {
+            const nft = request.nfts;
+            if (!request.approved_at) {
+                console.log(`Skipping NFT ${nft?.name || 'Unknown'}: not approved`);
+                return total;
+            }
+            
+            const startDate = new Date(request.approved_at);
+            let currentValue = nft.price;
+            let currentDate = new Date(startDate);
+            let weeklyLog = [];
+            
+            console.log('Processing NFT:', {
+                name: nft.name,
+                price: nft.price,
+                dailyRate: nft.daily_rate,
+                startDate: startDate.toISOString(),
+                today: today.toISOString()
+            });
+            
+            // 週ごとに計算
+            while (currentDate <= today) {
+                const endOfWeek = new Date(currentDate);
+                endOfWeek.setDate(endOfWeek.getDate() + 5); // 金曜日まで
+                
+                const weekStartValue = currentValue;
+                
+                // その週の営業日数を計算
+                const weekBusinessDays = calculateBusinessDays(
+                    currentDate,
+                    endOfWeek > today ? today : endOfWeek
+                );
+                
+                // その週の報酬を計算（日利は%で保存）
+                for (let i = 0; i < weekBusinessDays; i++) {
+                    const dailyProfit = currentValue * nft.daily_rate;
+                    currentValue += dailyProfit;
+                    console.log(`Day ${i + 1}: ${currentValue.toFixed(2)} (+${dailyProfit.toFixed(2)})`);
+                }
+                
+                weeklyLog.push({
+                    weekStart: currentDate.toLocaleDateString(),
+                    weekEnd: endOfWeek.toLocaleDateString(),
+                    startValue: weekStartValue,
+                    endValue: currentValue,
+                    businessDays: weekBusinessDays,
+                    profit: currentValue - weekStartValue
+                });
+                
+                currentDate.setDate(currentDate.getDate() + 7);
+            }
+            
+            const profit = currentValue - nft.price;
+            console.log(`NFT ${nft.name} final calculation:`, {
+                initialValue: nft.price,
+                finalValue: currentValue,
+                profit: profit,
+                weeklyBreakdown: weeklyLog
+            });
+            
+            return total + profit;
+        }, 0);
+
+        console.log('Total pending rewards:', totalRewards);
+        return totalRewards;
+    };
+
+    // NFTデータを取得する部分を一箇所に統一
+    const fetchNFTs = async () => {
+        try {
+            const { data: fetchedRequests, error } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    *,
+                    nfts (*)
+                `)
+                .eq('user_id', user.id)
+                .eq('status', 'approved');
+
+            if (error) throw error;
+            
+            console.log('Fetched requests:', fetchedRequests);
+            setUserNFTs(fetchedRequests?.map(request => request.nfts) || []);
+            setRequests(fetchedRequests || []);
+            return fetchedRequests;
+        } catch (error) {
+            console.error('Error fetching NFTs:', error);
+            setError('NFTの取得に失敗しました');
+            return [];
+        }
+    };
+
+    // 初期化時にデータを取得
+    useEffect(() => {
+        if (user) {
+            fetchNFTs();
+        }
+    }, [user]);
+
     if (!user) return null
 
     return (
@@ -234,7 +349,19 @@ export default function DashboardPage() {
                         </div>
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">保留中の報酬</div>
-                            <div className="text-white text-2xl font-bold">$0</div>
+                            <div className="text-white text-2xl font-bold">
+                                {userNFTs.length > 0 ? (
+                                    <span onClick={async () => {
+                                        const fetchedRequests = await fetchNFTs();
+                                        const rewards = calculateCompoundRewards(fetchedRequests || []);
+                                        console.log('Calculated rewards:', rewards);
+                                    }}>
+                                        ${Math.floor(calculateCompoundRewards(requests)).toLocaleString()}
+                                    </span>
+                                ) : (
+                                    '$0'
+                                )}
+                            </div>
                         </div>
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">紹介者数</div>
@@ -335,10 +462,10 @@ export default function DashboardPage() {
                                         className="bg-gray-700 rounded-lg overflow-hidden hover:bg-gray-600 transition-all duration-200 transform hover:-translate-y-1"
                                     >
                                         <div className="aspect-square relative w-full">
-                                            {userNft.nfts.image_url ? (
+                                            {userNft.image_url ? (
                                                 <img
-                                                    src={userNft.nfts.image_url}
-                                                    alt={userNft.nfts.name}
+                                                    src={userNft.image_url}
+                                                    alt={userNft.name}
                                                     className="w-full h-full object-cover"
                                                     loading="lazy"
                                                 />
@@ -352,14 +479,14 @@ export default function DashboardPage() {
                                             </div>
                                         </div>
                                         <div className="p-3">
-                                            <h3 className="font-bold text-white text-sm mb-1">{userNft.nfts.name}</h3>
+                                            <h3 className="font-bold text-white text-sm mb-1">{userNft.name}</h3>
                                             <div className="space-y-1 text-sm">
-                                                <p className="text-emerald-400">${userNft.nfts.price.toLocaleString()}</p>
+                                                <p className="text-emerald-400">${userNft.price.toLocaleString()}</p>
                                                 <p className="text-blue-400">
-                                                    日利上限: {(userNft.nfts.daily_rate * 100).toFixed(2)}%
+                                                    日利上限: {(userNft.daily_rate * 100).toFixed(2)}%
                                                 </p>
                                                 <p className="text-gray-400">
-                                                    購入日: {new Date(userNft.approved_at || userNft.created_at).toLocaleDateString('ja-JP')}
+                                                    購入日: {new Date(userNft.created_at).toLocaleDateString('ja-JP')}
                                                 </p>
                                             </div>
                                         </div>
