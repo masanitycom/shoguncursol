@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { Dialog } from '@headlessui/react'
-import Header from '@/components/Header'
 
 interface UserProfile {
     id: string
@@ -163,7 +162,6 @@ export default function ProfilePage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-4xl mx-auto px-4 py-8">
                     <div className="bg-gray-800 rounded-lg shadow-lg p-6">
