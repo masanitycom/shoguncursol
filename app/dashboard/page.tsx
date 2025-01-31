@@ -13,6 +13,7 @@ import {
     UserIcon
 } from '@heroicons/react/24/outline'
 import DailyRatesDisplay from '@/components/DailyRatesDisplay'
+import { LEVELS } from '@/lib/constants/levels'
 
 // NFTの型定義を更新
 interface NFT {
@@ -37,6 +38,7 @@ export default function DashboardPage() {
     const [userNFTs, setUserNFTs] = useState<NFT[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [levelInfo, setLevelInfo] = useState<{ maxLine: number; otherLines: number; personalInvestment: number } | null>(null)
 
     useEffect(() => {
         checkAuth()
@@ -111,6 +113,57 @@ export default function DashboardPage() {
         return nfts.reduce((total, userNft) => total + userNft.nft.price, 0)
     }
 
+    // レベル判定に必要な情報を取得する関数を修正
+    const fetchUserLevelInfo = async (userId: string) => {
+        try {
+            // 直紹介の傘下の情報を取得
+            const { data: referrals, error: referralError } = await supabase
+                .from('user_data')
+                .select(`
+                    id,
+                    investment,
+                    referrer
+                `)
+                .eq('referrer', userId)
+
+            if (referralError) throw referralError
+
+            // 系列ごとの投資額を計算
+            const lines = referrals?.map(user => user.investment || 0) || []
+            const maxLine = lines.length > 0 ? Math.max(...lines) : 0
+            const otherLines = lines.reduce((sum, line) => sum + line, 0) - maxLine
+
+            return {
+                maxLine,
+                otherLines,
+                personalInvestment: calculateTotalInvestment(userNFTs)
+            }
+        } catch (error) {
+            console.error('Error fetching level info:', error)
+            return null
+        }
+    }
+
+    // レベル計算用の関数を修正
+    const calculateUserLevel = (personalInvestment: number, maxLine: number, otherLines: number): string => {
+        // 個人の投資額が1000ドル未満の場合
+        if (personalInvestment < 1000) return '--'
+
+        // 直紹介の傘下の合計が1000ドル以上で足軽レベル
+        if (maxLine >= 1000) return '足軽'
+        
+        return '--'
+    }
+
+    // useEffectでレベル情報を取得
+    useEffect(() => {
+        if (user) {
+            fetchUserLevelInfo(user.id).then(info => {
+                if (info) setLevelInfo(info)
+            })
+        }
+    }, [user, userNFTs])
+
     if (!user) return null
 
     return (
@@ -133,11 +186,41 @@ export default function DashboardPage() {
                     )}
 
                     {/* 統計カード */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                        <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="text-gray-400 text-sm">現在のレベル</div>
+                            <div className="space-y-2">
+                                <div className="text-white text-2xl font-bold flex items-baseline space-x-2">
+                                    <span className="font-japanese">
+                                        {loading || !levelInfo ? '--' : calculateUserLevel(
+                                            calculateTotalInvestment(userNFTs),
+                                            levelInfo.maxLine,
+                                            levelInfo.otherLines
+                                        )}
+                                    </span>
+                                </div>
+                                {!loading && levelInfo && (
+                                    <div className="space-y-1">
+                                        <div className="text-sm">
+                                            <span className="text-gray-400">最大系列：</span>
+                                            <span className="text-white">${levelInfo.maxLine.toLocaleString()}</span>
+                                        </div>
+                                        <div className="text-sm">
+                                            <span className="text-gray-400">他系列：</span>
+                                            <span className="text-white">${levelInfo.otherLines.toLocaleString()}</span>
+                                        </div>
+                                        <div className="text-sm">
+                                            <span className="text-gray-400">個人投資：</span>
+                                            <span className="text-white">${calculateTotalInvestment(userNFTs).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">総投資額</div>
                             <div className="text-white text-2xl font-bold">
-                                ${loading ? '...' : calculateTotalInvestment(userNFTs).toLocaleString()}
+                                ${loading ? '--' : calculateTotalInvestment(userNFTs).toLocaleString()}
                             </div>
                         </div>
                         <div className="bg-gray-800 rounded-lg p-4">

@@ -6,7 +6,11 @@ module.exports = {
     './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        japanese: ['Noto Sans JP', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 } 
