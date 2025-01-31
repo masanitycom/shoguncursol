@@ -40,6 +40,7 @@ export default function PurchaseRequestsPage() {
     const [editingRequest, setEditingRequest] = useState<PurchaseRequest | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
     const [filteredRequests, setFilteredRequests] = useState<PurchaseRequest[]>([])
+    const [deletingRequest, setDeletingRequest] = useState<PurchaseRequest | null>(null)
 
     useEffect(() => {
         checkAuth()
@@ -281,6 +282,41 @@ export default function PurchaseRequestsPage() {
         }
     }
 
+    // 削除処理の関数を追加
+    const handleDelete = async (request: PurchaseRequest) => {
+        if (!window.confirm('このNFTを削除してもよろしいですか？\n※この操作は取り消せません。')) {
+            return
+        }
+
+        setLoading(true)
+        try {
+            // NFTを削除
+            const { error: nftError } = await supabase
+                .from('nfts')
+                .delete()
+                .eq('id', request.nft_id)
+
+            if (nftError) throw nftError
+
+            // 購入履歴も削除
+            const { error: requestError } = await supabase
+                .from('nft_purchase_requests')
+                .delete()
+                .eq('id', request.id)
+
+            if (requestError) throw requestError
+
+            // 画面を更新
+            fetchRequests()
+            setError('NFTを削除しました')
+        } catch (error) {
+            console.error('Error deleting NFT:', error)
+            setError('NFTの削除に失敗しました')
+        } finally {
+            setLoading(false)
+        }
+    }
+
     if (!user) return null
 
     return (
@@ -330,39 +366,56 @@ export default function PurchaseRequestsPage() {
 
                         <div className="bg-gray-800 rounded-lg overflow-hidden">
                             <table className="min-w-full">
-                                <thead>
-                                    <tr className="bg-gray-700">
-                                        <th className="px-6 py-3 text-left text-white">申請日時</th>
-                                        <th className="px-6 py-3 text-left text-white">ユーザー情報</th>
-                                        <th className="px-6 py-3 text-left text-white">NFT</th>
-                                        <th className="px-6 py-3 text-left text-white">価格</th>
-                                        <th className="px-6 py-3 text-left text-white">支払方法</th>
-                                        <th className="px-6 py-3 text-left text-white">ステータス</th>
-                                        <th className="px-6 py-3 text-left text-white">操作</th>
+                                <thead className="bg-gray-800">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            ユーザー
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            NFT
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            価格
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            購入日
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            承認日
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            ステータス
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                            アクション
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700">
                                     {filteredRequests.map((request) => (
-                                        <tr key={request.id} className="hover:bg-gray-750">
-                                            <td className="px-6 py-4 text-white">
-                                                {new Date(request.created_at).toLocaleString('ja-JP')}
-                                            </td>
-                                            <td className="px-6 py-4 text-white">
+                                        <tr key={request.id} className="bg-gray-700">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <div className="flex flex-col">
                                                     <span className="font-medium">{request.user.name_kana}</span>
                                                     <span className="text-sm text-gray-400">ID: {request.user.user_id}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-white">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 {request.nfts.name}
                                             </td>
-                                            <td className="px-6 py-4 text-white">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 {request.nfts.price.toLocaleString()} USDT
                                             </td>
-                                            <td className="px-6 py-4 text-white">
-                                                {request.payment_method === 'bank_transfer' ? '銀行振込' : 'USDT送金'}
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                                {new Date(request.created_at).toLocaleDateString('ja-JP')}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                                {request.approved_at ? 
+                                                    new Date(request.approved_at).toLocaleDateString('ja-JP') : 
+                                                    '-'
+                                                }
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <span className={`px-2 py-1 rounded text-sm ${
                                                     request.status === 'pending' ? 'bg-yellow-500 text-yellow-900' :
                                                     request.status === 'approved' ? 'bg-green-500 text-green-900' :
@@ -372,7 +425,7 @@ export default function PurchaseRequestsPage() {
                                                      request.status === 'approved' ? '承認済み' : '却下'}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <div className="space-x-2">
                                                     {request.status === 'pending' && (
                                                         <>
@@ -397,6 +450,13 @@ export default function PurchaseRequestsPage() {
                                                         className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
                                                     >
                                                         編集
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(request)}
+                                                        disabled={loading}
+                                                        className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50"
+                                                    >
+                                                        削除
                                                     </button>
                                                 </div>
                                             </td>
@@ -477,7 +537,7 @@ function EditRequestModal({ request, onClose, onSave }: {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium mb-1 text-white">申請日時</label>
+                        <label className="block text-sm font-medium mb-1 text-white">購入日時</label>
                         <input
                             type="datetime-local"
                             value={formData.created_at.slice(0, 16)}

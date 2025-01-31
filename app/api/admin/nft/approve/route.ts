@@ -29,33 +29,37 @@ const recalculateUserInvestment = async (userId: string) => {
         await adminSupabase
             .from('users')
             .update({
-                investment_amount: totalInvestment,
-                updated_at: new Date().toISOString()
+                total_investment: totalInvestment
             })
             .eq('id', userId)
 
-        return totalInvestment
     } catch (error) {
         console.error('Error recalculating investment:', error)
-        throw error
     }
 }
 
 export async function POST(request: Request) {
     try {
         const { nftRequest, userId } = await request.json()
-        const now = new Date()
         
-        // 翌日の0時を設定
-        const tomorrow = new Date(now)
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        tomorrow.setHours(0, 0, 0, 0)
+        // 現在時刻を日本時間で取得
+        const jstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+        
+        // 翌日の0時（UTC）を設定
+        const tomorrow = new Date(Date.UTC(
+            jstNow.getFullYear(),
+            jstNow.getMonth(),
+            jstNow.getDate() + 1,
+            0, 0, 0, 0
+        ))
 
         console.log('Processing request:', {
             nftRequest,
             userId,
-            approvedAt: now.toISOString(),
-            rewardStartsAt: tomorrow.toISOString()
+            approvedAt: jstNow.toISOString(),
+            rewardStartsAt: tomorrow.toISOString(),
+            approvedAtJST: jstNow.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
+            rewardStartsJST: tomorrow.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
         })
 
         // NFTマスターデータを取得
@@ -86,8 +90,9 @@ export async function POST(request: Request) {
             description: nftMaster.description || `${nftRequest.nfts.name} - ${nftMaster.price.toLocaleString()} USDT - 日利上限${(nftMaster.daily_rate * 100).toFixed(2)}%`,
             nft_type: 'normal',
             owner_id: userId,
-            last_transferred_at: tomorrow.toISOString(),  // 翌日0時を設定
-            status: 'active'
+            last_transferred_at: tomorrow.toISOString(),
+            status: 'active',
+            approved_at: jstNow.toISOString()  // 承認時刻を日本時間で設定
         }
 
         console.log('Preparing to create NFT:', nftData)
@@ -117,7 +122,7 @@ export async function POST(request: Request) {
             .from('nft_purchase_requests')
             .update({
                 status: 'approved',
-                approved_at: now.toISOString(),  // 承認時刻は現在時刻
+                approved_at: jstNow.toISOString(),  // 承認時刻を日本時間で設定
                 nft_id: newNft.id
             })
             .eq('id', nftRequest.id)
