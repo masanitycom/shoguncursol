@@ -75,13 +75,20 @@ export default function DailyRatesDisplay() {
             <h2 className="text-xl font-bold text-white mb-4">本日の日利</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {rates.map((item, index) => (
-                    <div key={index} className="bg-gray-700 p-4 rounded-lg">
+                    <div key={index} className="bg-gray-700 p-4 rounded-lg hover:bg-gray-600 transition-all duration-200">
                         <h3 className="text-lg font-semibold text-white mb-2">
                             {item.nft.name}
                         </h3>
-                        <div className="text-gray-300">
-                            <p>日利: {item.dailyRate.toFixed(2)}%</p>
-                            <p>利益: ${item.profitAmount.toLocaleString()}</p>
+                        <div className="space-y-2">
+                            <p className="text-sm text-gray-300">
+                                日利: {item.dailyRate.toFixed(2)}%
+                            </p>
+                            <div className="flex items-baseline space-x-1">
+                                <span className="text-sm text-gray-400">利益:</span>
+                                <span className="text-2xl font-bold text-emerald-400">
+                                    ${item.profitAmount.toLocaleString()}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 ))}

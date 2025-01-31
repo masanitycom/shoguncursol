@@ -9,7 +9,8 @@ import {
     ShoppingCartIcon, 
     GiftIcon, 
     ClockIcon, 
-    UsersIcon 
+    UsersIcon,
+    UserIcon
 } from '@heroicons/react/24/outline'
 import DailyRatesDisplay from '@/components/DailyRatesDisplay'
 
@@ -154,7 +155,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* アクションボタン */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                         <Link href="/nfts/purchase" 
                             className="group bg-emerald-600 p-4 rounded-lg hover:bg-emerald-700 transition-colors relative overflow-hidden"
                         >
@@ -209,6 +210,20 @@ export default function DashboardPage() {
                             </div>
                             <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
                                 <UsersIcon className="w-24 h-24 text-white" />
+                            </div>
+                        </Link>
+                        <Link href="/profile"
+                            className="group bg-teal-600 p-4 rounded-lg hover:bg-teal-700 transition-colors relative overflow-hidden"
+                        >
+                            <div className="flex items-start space-x-3">
+                                <UserIcon className="w-6 h-6 text-teal-200 flex-shrink-0" />
+                                <div>
+                                    <h3 className="text-white font-bold mb-2">プロフィール編集</h3>
+                                    <p className="text-sm text-teal-100">アカウント情報の確認・編集</p>
+                                </div>
+                            </div>
+                            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
+                                <UserIcon className="w-24 h-24 text-white" />
                             </div>
                         </Link>
                     </div>
