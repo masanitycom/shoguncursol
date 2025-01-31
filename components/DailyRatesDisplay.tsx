@@ -81,7 +81,7 @@ export default function DailyRatesDisplay() {
                         </h3>
                         <div className="text-gray-300">
                             <p>日利: {item.dailyRate.toFixed(2)}%</p>
-                            <p>利益: ¥{item.profitAmount.toLocaleString()}</p>
+                            <p>利益: ${item.profitAmount.toLocaleString()}</p>
                         </div>
                     </div>
                 ))}
