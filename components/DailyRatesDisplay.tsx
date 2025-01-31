@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { NFTType, DailyRate } from '@/types/nft'
 
-interface NFTWithRate {
-    nft: NFTType
-    dailyRate: number
-    profitAmount: number
+interface NFTRate {
+    name: string
+    price: number
+    daily_rate: number
+    approved_at: string
 }
 
 export default function DailyRatesDisplay() {
-    const [rates, setRates] = useState<NFTWithRate[]>([])
+    const [rates, setRates] = useState<NFTRate[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -21,47 +21,40 @@ export default function DailyRatesDisplay() {
 
     const fetchDailyRates = async () => {
         try {
-            const today = new Date().toISOString().split('T')[0]
-            
-            // まず、ユーザーの所有NFTを取得
-            const { data: userNfts, error: nftError } = await supabase
-                .from('user_nfts')
+            // 現在のユーザーのセッションを取得
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session) return
+
+            // ユーザーの所有NFTを取得
+            const { data: nfts, error: nftsError } = await supabase
+                .from('nft_purchase_requests')
                 .select(`
                     id,
-                    nft:nft_id (
+                    approved_at,
+                    nfts:nft_id (
                         id,
                         name,
                         price,
                         daily_rate
                     )
                 `)
-                .eq('status', 'active')
+                .eq('user_id', session.user.id)
+                .eq('status', 'approved')
 
-            if (nftError) throw nftError
+            if (nftsError) throw nftsError
 
-            // 本日の日利を取得
-            const { data: dailyRates, error: rateError } = await supabase
-                .from('daily_rates')
-                .select('*')
-                .eq('date', today)
-                .in('nft_id', userNfts?.map(un => un.nft.id) || [])
-
-            if (rateError) throw rateError
-
-            // データを結合
-            const nftRates = userNfts?.map(nft => {
-                const todayRate = dailyRates?.find(dr => dr.nft_id === nft.nft.id)
-                return {
-                    nft: nft.nft,
-                    dailyRate: todayRate?.rate || nft.nft.daily_rate, // 本日の日利がない場合はデフォルト値を使用
-                    profitAmount: (nft.nft.price * (todayRate?.rate || nft.nft.daily_rate)) / 100
-                }
-            }) || []
+            // NFT毎の日利を計算
+            const nftRates = nfts?.map(nft => ({
+                name: nft.nfts.name,
+                price: nft.nfts.price,
+                daily_rate: nft.nfts.daily_rate * 100, // パーセント表示に変換（0.005 → 0.5%）
+                approved_at: nft.approved_at
+            })) || []
 
             setRates(nftRates)
-        } catch (err) {
+        } catch (error) {
+            console.error('Error fetching daily rates:', error)
             setError('日利の取得に失敗しました')
-            console.error('Error fetching daily rates:', err)
         } finally {
             setLoading(false)
         }
@@ -77,16 +70,16 @@ export default function DailyRatesDisplay() {
                 {rates.map((item, index) => (
                     <div key={index} className="bg-gray-700 p-4 rounded-lg hover:bg-gray-600 transition-all duration-200">
                         <h3 className="text-lg font-semibold text-white mb-2">
-                            {item.nft.name}
+                            {item.name}
                         </h3>
                         <div className="space-y-2">
                             <p className="text-sm text-gray-300">
-                                日利: {item.dailyRate.toFixed(2)}%
+                                日利: {item.daily_rate.toFixed(2)}%
                             </p>
                             <div className="flex items-baseline space-x-1">
-                                <span className="text-sm text-gray-400">利益:</span>
+                                <span className="text-sm text-gray-400">予想利益:</span>
                                 <span className="text-2xl font-bold text-emerald-400">
-                                    ${item.profitAmount.toLocaleString()}
+                                    ${((item.price * item.daily_rate) / 100).toLocaleString()}
                                 </span>
                             </div>
                         </div>

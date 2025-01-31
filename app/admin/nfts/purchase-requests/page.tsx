@@ -127,30 +127,27 @@ export default function PurchaseRequestsPage() {
 
     const handleApprove = async (request: PurchaseRequest) => {
         try {
-            // トランザクションで処理
-            const { error: updateError } = await supabase
-                .from('nft_purchase_requests')
-                .update({ 
-                    status: 'approved',
-                    approved_at: new Date().toISOString()
+            const response = await fetch('/api/admin/nft/approve', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    nftRequest: request,
+                    userId: request.user_id
                 })
-                .eq('id', request.id)
+            })
 
-            if (updateError) throw updateError
+            const data = await response.json()
 
-            // NFTの所有者を更新
-            const { error: nftError } = await supabase
-                .from('nfts')
-                .update({ 
-                    owner_id: request.user_id,
-                    last_transferred_at: new Date().toISOString()
-                })
-                .eq('id', request.nft_id)
-
-            if (nftError) throw nftError
+            if (!response.ok) {
+                console.error('API Error:', data)
+                throw new Error(data.error + (data.details ? `\n${JSON.stringify(data.details)}` : ''))
+            }
 
             // 一覧を再取得
-            fetchRequests()
+            await fetchRequests()
+
         } catch (error: any) {
             console.error('Error approving request:', error)
             setError(error.message)
@@ -172,14 +169,80 @@ export default function PurchaseRequestsPage() {
         }
     }
 
+    // ユーザーの投資額を再計算する関数を追加
+    const recalculateUserInvestment = async (userId: string) => {
+        try {
+            console.log('Recalculating investment for user:', userId)
+
+            // 1. ユーザーの承認済み購入履歴をすべて取得
+            const { data: purchases, error: purchasesError } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    nfts (
+                        id,
+                        name,
+                        price
+                    )
+                `)
+                .eq('user_id', userId)
+                .eq('status', 'approved')
+
+            if (purchasesError) throw purchasesError
+            console.log('Found approved purchases:', purchases)
+
+            // 2. 総投資額を計算
+            const totalInvestment = purchases?.reduce((sum, purchase) => {
+                const price = purchase.nfts?.price || 0
+                console.log(`Adding NFT price: ${price} to sum: ${sum}`)
+                return sum + price
+            }, 0) || 0
+
+            console.log('Calculated total investment:', totalInvestment)
+
+            // 3. ユーザーの投資額を更新
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({
+                    investment_amount: totalInvestment,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', userId)
+
+            if (updateError) {
+                console.error('Error updating user investment:', updateError)
+                throw updateError
+            }
+
+            // 4. 更新後の値を確認
+            const { data: updatedUser, error: checkError } = await supabase
+                .from('users')
+                .select('investment_amount')
+                .eq('id', userId)
+                .single()
+
+            if (checkError) {
+                console.error('Error checking updated value:', checkError)
+            } else {
+                console.log('Updated investment amount confirmed:', updatedUser?.investment_amount)
+            }
+
+            return totalInvestment
+        } catch (error) {
+            console.error('Error recalculating investment:', error)
+            throw error
+        }
+    }
+
     const handleSave = async (updatedRequest: PurchaseRequest) => {
         try {
+            console.log('Starting save process...', updatedRequest)
+
             // 購入申請の更新
             const { error: updateError } = await supabase
                 .from('nft_purchase_requests')
                 .update({
                     created_at: updatedRequest.created_at,
-                    approved_at: updatedRequest.approved_at,
+                    approved_at: updatedRequest.status === 'approved' ? updatedRequest.created_at : null,
                     status: updatedRequest.status,
                     nft_id: updatedRequest.nft_id
                 })
@@ -192,58 +255,21 @@ export default function PurchaseRequestsPage() {
 
             // NFTの所有者情報の更新（承認済みの場合のみ）
             if (updatedRequest.status === 'approved') {
-                // 1. 新しいNFTの価格を取得
-                const { data: nftData, error: nftError } = await supabase
-                    .from('nfts')
-                    .select('price')
-                    .eq('id', updatedRequest.nft_id)
-                    .single()
-
-                if (nftError) throw nftError
-
-                // 2. ユーザーの全NFT購入履歴を取得
-                const { data: userPurchases, error: purchasesError } = await supabase
-                    .from('nft_purchase_requests')
-                    .select(`
-                        nfts (
-                            price
-                        )
-                    `)
-                    .eq('user_id', updatedRequest.user_id)
-                    .eq('status', 'approved')
-
-                if (purchasesError) throw purchasesError
-
-                // 3. 総投資額を計算
-                const totalInvestment = userPurchases
-                    .reduce((sum, purchase) => sum + (purchase.nfts?.price || 0), 0)
-
-                // 4. ユーザーの投資額を更新
-                const { error: userUpdateError } = await supabase
-                    .from('users')
-                    .update({
-                        investment_amount: totalInvestment
-                    })
-                    .eq('id', updatedRequest.user_id)
-
-                if (userUpdateError) {
-                    console.error('User update error:', userUpdateError)
-                    setError('投資額の更新に失敗しましたが、他の更新は成功しました')
-                }
-
-                // 5. NFTの所有者を更新
-                const { error: nftOwnerError } = await supabase
+                const { error: nftError } = await supabase
                     .from('nfts')
                     .update({
                         owner_id: updatedRequest.user_id,
-                        last_transferred_at: updatedRequest.approved_at || new Date().toISOString()
+                        last_transferred_at: updatedRequest.created_at
                     })
                     .eq('id', updatedRequest.nft_id)
 
-                if (nftOwnerError) {
-                    console.error('NFT owner update error:', nftOwnerError)
-                    setError('NFTの所有者情報の更新に失敗しましたが、他の更新は成功しました')
+                if (nftError) {
+                    console.error('NFT update error:', nftError)
+                    setError('NFTの所有者情報の更新に失敗しましたが、申請状態は更新されました')
                 }
+
+                // 投資額を再計算
+                await recalculateUserInvestment(updatedRequest.user_id)
             }
 
             setEditingRequest(null)
