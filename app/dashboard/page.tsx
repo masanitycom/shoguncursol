@@ -12,7 +12,7 @@ import {
     UsersIcon 
 } from '@heroicons/react/24/outline'
 
-// NFTの型定義を修正
+// NFTの型定義を更新
 interface NFT {
     id: string
     user_id: string
@@ -21,6 +21,8 @@ interface NFT {
         name: string
         image_url: string
         price: number
+        description?: string
+        status: 'active' | 'inactive'
     }
     created_at: string
 }
@@ -60,6 +62,7 @@ export default function DashboardPage() {
         if (!user) return
 
         try {
+            // NFTデータの取得
             const { data: nfts, error: nftsError } = await supabase
                 .from('user_nfts')
                 .select(`
@@ -68,13 +71,36 @@ export default function DashboardPage() {
                         id,
                         name,
                         price,
-                        image_url
+                        image_url,
+                        description,
+                        status
                     )
                 `)
                 .eq('user_id', user.id)
+                .eq('nft.status', 'active')
 
             if (nftsError) throw nftsError
-            setUserNFTs(nfts as NFT[] || [])
+
+            // NFT画像のURLを取得
+            const nftsWithImageUrls = await Promise.all((nfts || []).map(async (nft) => {
+                if (nft.nft.image_url) {
+                    const { data: imageUrl } = await supabase
+                        .storage
+                        .from('nfts')
+                        .getPublicUrl(nft.nft.image_url)
+
+                    return {
+                        ...nft,
+                        nft: {
+                            ...nft.nft,
+                            image_url: imageUrl.publicUrl
+                        }
+                    }
+                }
+                return nft
+            }))
+
+            setUserNFTs(nftsWithImageUrls as NFT[])
         } catch (error) {
             console.error('Error:', error)
             setError('データの取得に失敗しました')
@@ -190,17 +216,39 @@ export default function DashboardPage() {
                         {loading ? (
                             <div className="text-center text-gray-400">読み込み中...</div>
                         ) : (
-                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                                 {userNFTs.map((userNft) => (
-                                    <div key={userNft.id} className="bg-gray-700 rounded-lg overflow-hidden">
-                                        <img
-                                            src={`/images/nfts/${userNft.nft.image_url}`}
-                                            alt={userNft.nft.name}
-                                            className="w-full aspect-square object-cover"
-                                        />
-                                        <div className="p-4">
-                                            <h3 className="font-bold text-white text-lg mb-2">{userNft.nft.name}</h3>
-                                            <p className="text-gray-400">${userNft.nft.price.toLocaleString()}</p>
+                                    <div key={userNft.id} 
+                                        className="bg-gray-700 rounded-lg overflow-hidden hover:bg-gray-600 transition-all duration-200 transform hover:-translate-y-1"
+                                    >
+                                        <div className="aspect-square relative w-full">
+                                            {userNft.nft.image_url ? (
+                                                <img
+                                                    src={userNft.nft.image_url}
+                                                    alt={userNft.nft.name}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                                    <span className="text-gray-400">No image</span>
+                                                </div>
+                                            )}
+                                            <div className="absolute top-2 right-2 bg-emerald-500 text-white text-xs px-2 py-0.5 rounded-full">
+                                                Active
+                                            </div>
+                                        </div>
+                                        <div className="p-3">
+                                            <h3 className="font-bold text-white text-base mb-1 truncate">{userNft.nft.name}</h3>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <p className="text-emerald-400 font-semibold text-sm">${userNft.nft.price.toLocaleString()}</p>
+                                                <span className="text-xs text-gray-400">
+                                                    {new Date(userNft.created_at).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            {userNft.nft.description && (
+                                                <p className="text-xs text-gray-400 line-clamp-1">{userNft.nft.description}</p>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
