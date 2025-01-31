@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { 
+    ShoppingCartIcon, 
+    GiftIcon, 
+    ClockIcon, 
+    UsersIcon 
+} from '@heroicons/react/24/outline'
 
 // NFTの型定義を修正
 interface NFT {
@@ -121,28 +127,60 @@ export default function DashboardPage() {
                     {/* アクションボタン */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                         <Link href="/nfts/purchase" 
-                            className="bg-emerald-600 p-4 rounded-lg hover:bg-emerald-700 transition-colors"
+                            className="group bg-emerald-600 p-4 rounded-lg hover:bg-emerald-700 transition-colors relative overflow-hidden"
                         >
-                            <h3 className="text-white font-bold mb-2">NFTを購入する</h3>
-                            <p className="text-sm text-emerald-100">新しいNFTを購入して収益を増やしましょう</p>
+                            <div className="flex items-start space-x-3">
+                                <ShoppingCartIcon className="w-6 h-6 text-emerald-200 flex-shrink-0" />
+                                <div>
+                                    <h3 className="text-white font-bold mb-2">NFTを購入する</h3>
+                                    <p className="text-sm text-emerald-100">新しいNFTを購入して収益を増やしましょう</p>
+                                </div>
+                            </div>
+                            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
+                                <ShoppingCartIcon className="w-24 h-24 text-white" />
+                            </div>
                         </Link>
                         <Link href="/rewards/airdrop"
-                            className="bg-blue-600 p-4 rounded-lg hover:bg-blue-700 transition-colors"
+                            className="group bg-blue-600 p-4 rounded-lg hover:bg-blue-700 transition-colors relative overflow-hidden"
                         >
-                            <h3 className="text-white font-bold mb-2">エアドロップを受け取る</h3>
-                            <p className="text-sm text-blue-100">デイリータスクに回答してエアドロップを受け取りましょう</p>
+                            <div className="flex items-start space-x-3">
+                                <GiftIcon className="w-6 h-6 text-blue-200 flex-shrink-0" />
+                                <div>
+                                    <h3 className="text-white font-bold mb-2">エアドロップを受け取る</h3>
+                                    <p className="text-sm text-blue-100">デイリータスクに回答してエアドロップを受け取りましょう</p>
+                                </div>
+                            </div>
+                            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
+                                <GiftIcon className="w-24 h-24 text-white" />
+                            </div>
                         </Link>
                         <Link href="/rewards/history"
-                            className="bg-violet-600 p-4 rounded-lg hover:bg-violet-700 transition-colors"
+                            className="group bg-violet-600 p-4 rounded-lg hover:bg-violet-700 transition-colors relative overflow-hidden"
                         >
-                            <h3 className="text-white font-bold mb-2">報酬履歴を確認</h3>
-                            <p className="text-sm text-violet-100">過去の報酬申請履歴を確認できます</p>
+                            <div className="flex items-start space-x-3">
+                                <ClockIcon className="w-6 h-6 text-violet-200 flex-shrink-0" />
+                                <div>
+                                    <h3 className="text-white font-bold mb-2">報酬履歴を確認</h3>
+                                    <p className="text-sm text-violet-100">過去の報酬申請履歴を確認できます</p>
+                                </div>
+                            </div>
+                            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
+                                <ClockIcon className="w-24 h-24 text-white" />
+                            </div>
                         </Link>
                         <Link href="/organization"
-                            className="bg-indigo-600 p-4 rounded-lg hover:bg-indigo-700 transition-colors"
+                            className="group bg-indigo-600 p-4 rounded-lg hover:bg-indigo-700 transition-colors relative overflow-hidden"
                         >
-                            <h3 className="text-white font-bold mb-2">組織図を表示</h3>
-                            <p className="text-sm text-indigo-100">あなたの紹介ネットワークを確認できます</p>
+                            <div className="flex items-start space-x-3">
+                                <UsersIcon className="w-6 h-6 text-indigo-200 flex-shrink-0" />
+                                <div>
+                                    <h3 className="text-white font-bold mb-2">組織図を表示</h3>
+                                    <p className="text-sm text-indigo-100">あなたの紹介ネットワークを確認できます</p>
+                                </div>
+                            </div>
+                            <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-1/4 translate-y-1/4">
+                                <UsersIcon className="w-24 h-24 text-white" />
+                            </div>
                         </Link>
                     </div>
 
