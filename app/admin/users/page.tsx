@@ -10,7 +10,8 @@ import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 interface User {
     id: string
     email: string
-    name: string
+    user_id: string
+    name_kana: string
     wallet_address: string
     wallet_type: string
     created_at: string
@@ -44,10 +45,20 @@ export default function AdminUsersPage() {
         try {
             const { data, error } = await supabase
                 .from('users')
-                .select('*')
+                .select(`
+                    id,
+                    email,
+                    user_id,
+                    name_kana,
+                    wallet_address,
+                    wallet_type,
+                    created_at,
+                    active
+                `)
                 .order('created_at', { ascending: false })
 
             if (error) throw error
+            console.log('Fetched users:', data)
             setUsers(data || [])
         } catch (error) {
             console.error('Error fetching users:', error)
@@ -77,7 +88,7 @@ export default function AdminUsersPage() {
             const { error } = await supabase
                 .from('users')
                 .update({
-                    name: editForm.name,
+                    name_kana: editForm.name_kana,
                     email: editForm.email,
                     wallet_address: editForm.wallet_address,
                     wallet_type: editForm.wallet_type
@@ -154,8 +165,7 @@ export default function AdminUsersPage() {
                                     <thead>
                                         <tr className="text-left border-b border-gray-700">
                                             <th className="p-4 w-1/12">ID</th>
-                                            <th className="p-4 w-2/12">メールアドレス</th>
-                                            <th className="p-4 w-2/12">名前</th>
+                                            <th className="p-4 w-2/12">ユーザー情報</th>
                                             <th className="p-4 w-2/12">ウォレットアドレス</th>
                                             <th className="p-4 w-1/12">種類</th>
                                             <th className="p-4 w-1/12">登録日</th>
@@ -166,66 +176,31 @@ export default function AdminUsersPage() {
                                     <tbody>
                                         {users.map(user => (
                                             <tr key={user.id} className="border-b border-gray-700">
-                                                <td className="p-4">{user.id}</td>
-                                                {user.isEditing ? (
-                                                    <>
-                                                        <td className="p-4">
-                                                            <input
-                                                                type="email"
-                                                                value={editForm?.email || ''}
-                                                                onChange={e => setEditForm(prev => prev ? { ...prev, email: e.target.value } : null)}
-                                                                className="w-full bg-gray-700 text-white px-2 py-1 rounded"
-                                                            />
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <input
-                                                                type="text"
-                                                                value={editForm?.name || ''}
-                                                                onChange={e => setEditForm(prev => prev ? { ...prev, name: e.target.value } : null)}
-                                                                className="w-full bg-gray-700 text-white px-2 py-1 rounded"
-                                                            />
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <input
-                                                                type="text"
-                                                                value={editForm?.wallet_address || ''}
-                                                                onChange={e => setEditForm(prev => prev ? { ...prev, wallet_address: e.target.value } : null)}
-                                                                className="w-full bg-gray-700 text-white px-2 py-1 rounded"
-                                                            />
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <select
-                                                                value={editForm?.wallet_type || ''}
-                                                                onChange={e => setEditForm(prev => prev ? { ...prev, wallet_type: e.target.value } : null)}
-                                                                className="w-full bg-gray-700 text-white px-2 py-1 rounded"
-                                                            >
-                                                                <option value="EVOカード">EVOカード</option>
-                                                                <option value="その他">その他のウォレット</option>
-                                                            </select>
-                                                        </td>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <td className="p-4">{user.email}</td>
-                                                        <td className="p-4">{user.name}</td>
-                                                        <td className="p-4">
-                                                            <div className="flex items-center space-x-2">
-                                                                <span className="truncate max-w-[150px]">{user.wallet_address}</span>
-                                                                {user.wallet_address && (
-                                                                    <button
-                                                                        onClick={() => copyToClipboard(user.wallet_address)}
-                                                                        className="text-gray-400 hover:text-white"
-                                                                    >
-                                                                        <ClipboardDocumentIcon className="h-4 w-4" />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="p-4">{user.wallet_type}</td>
-                                                    </>
-                                                )}
+                                                <td className="p-4">{user.user_id}</td>
                                                 <td className="p-4">
-                                                    {new Date(user.created_at).toLocaleDateString()}
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{user.name_kana || '未設定'}</span>
+                                                        <span className="text-sm text-gray-400">{user.email}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="truncate max-w-[150px]">
+                                                            {user.wallet_address || '未設定'}
+                                                        </span>
+                                                        {user.wallet_address && (
+                                                            <button
+                                                                onClick={() => copyToClipboard(user.wallet_address)}
+                                                                className="text-gray-400 hover:text-white"
+                                                            >
+                                                                <ClipboardDocumentIcon className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">{user.wallet_type || '未設定'}</td>
+                                                <td className="p-4">
+                                                    {new Date(user.created_at).toLocaleDateString('ja-JP')}
                                                 </td>
                                                 <td className="p-4">
                                                     <span className={`px-2 py-1 rounded ${

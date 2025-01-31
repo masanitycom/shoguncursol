@@ -53,31 +53,97 @@ export default function AdminDashboardPage() {
 
     const fetchDashboardStats = async () => {
         try {
-            // ユーザー統計
-            const { data: users } = await supabase
+            // ユーザー情報の取得
+            const { data: users, error: usersError } = await supabase
                 .from('users')
                 .select('*')
 
-            // NFT購入申請
-            const { data: purchases } = await supabase
-                .from('nft_purchases')
-                .select('*, nft_master(*)')
+            if (usersError) throw usersError
+
+            // NFT購入情報のクエリを修正（nft_master → nfts）
+            const { data: nftPurchases, error: purchasesError } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    id,
+                    user_id,
+                    nft_id,
+                    status,
+                    nfts (
+                        id,
+                        name,
+                        price
+                    )
+                `)
+                .eq('status', 'approved')
+
+            if (purchasesError) {
+                console.error('NFT Purchases Error:', purchasesError)
+                throw purchasesError
+            }
+
+            console.log('Raw NFT Purchases:', nftPurchases)
+            console.log('Purchase Count:', nftPurchases?.length || 0)
+            
+            if (nftPurchases && nftPurchases.length > 0) {
+                nftPurchases.forEach(purchase => {
+                    console.log('Purchase Detail:', {
+                        purchaseId: purchase.id,
+                        userId: purchase.user_id,
+                        nftMasterId: purchase.nft_id,
+                        price: purchase.nfts?.price,
+                        status: purchase.status
+                    })
+                })
+            }
+
+            // ユーザーごとの投資額計算
+            const userInvestments = nftPurchases?.reduce((acc, purchase) => {
+                const userId = purchase.user_id
+                const price = purchase.nfts?.price
+                console.log(`Processing purchase for user ${userId} with price ${price}`)
+                
+                if (price) {
+                    acc[userId] = (acc[userId] || 0) + Number(price)
+                    console.log(`Updated investment for user ${userId} to ${acc[userId]}`)
+                }
+                return acc
+            }, {} as Record<string, number>) || {}
+
+            console.log('Final User Investments:', userInvestments)
+
+            const totalInvestment = Object.values(userInvestments).reduce((sum, amount) => {
+                console.log(`Adding amount ${amount} to sum ${sum}`)
+                return sum + amount
+            }, 0)
+
+            console.log('Final Total Investment:', totalInvestment)
+
+            setStats({
+                totalUsers: users?.length || 0,
+                activeUsers: users?.filter(u => u.active).length || 0,
+                totalInvestment: totalInvestment || 0,
+                monthlyRevenue: 0,
+                pendingPurchases: 0,
+                pendingAirdrops: 0
+            })
+
+            // 保留中の申請も同様に修正
+            const { data: pendingPurchases } = await supabase
+                .from('nft_purchase_requests')
+                .select('*, nfts(*)')
                 .eq('status', 'pending')
 
-            // エアドロップ申請
             const { data: airdrops } = await supabase
                 .from('task_responses')
                 .select('*')
                 .eq('status', 'pending')
 
-            setStats({
-                totalUsers: users?.length || 0,
-                activeUsers: users?.filter(u => u.status === 'active').length || 0,
-                totalInvestment: users?.reduce((sum, u) => sum + (u.investment_amount || 0), 0) || 0,
-                monthlyRevenue: 0, // 別途計算ロジックが必要
-                pendingPurchases: purchases?.length || 0,
+            setStats(prev => ({
+                ...prev,
+                pendingPurchases: pendingPurchases?.length || 0,
                 pendingAirdrops: airdrops?.length || 0
-            })
+            }))
+
         } catch (error) {
             console.error('Error fetching stats:', error)
         } finally {

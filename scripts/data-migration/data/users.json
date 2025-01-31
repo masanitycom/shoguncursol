@@ -1,0 +1,15 @@
+{
+    "users": [
+        {
+            "id": "old-user-id-1",
+            "user_id": "USER001",
+            "name_kana": "ヤマダ タロウ",
+            "email": "user1@example.com",
+            "wallet_address": "0x...",
+            "wallet_type": "EVOカード",
+            "created_at": "2023-01-01T00:00:00Z",
+            "updated_at": "2023-01-01T00:00:00Z"
+        }
+        // ... 他のユーザーデータ
+    ]
+} 

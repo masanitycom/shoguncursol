@@ -9,18 +9,26 @@ import AdminSidebar from '../../../../components/AdminSidebar'
 interface PurchaseRequest {
     id: string
     created_at: string
+    approved_at?: string
+    user_id: string
+    nft_id: string
     user: {
-        email: string
+        name_kana: string
+        user_id: string
     }
-    nft_master: {
+    nfts: {
+        id: string
         name: string
         price: number
     }
     payment_method: 'bank_transfer' | 'usdt'
     status: 'pending' | 'approved' | 'rejected'
-    profiles?: {
-        email: string
-    }
+}
+
+interface NFT {
+    id: string
+    name: string
+    price: number
 }
 
 export default function PurchaseRequestsPage() {
@@ -29,6 +37,9 @@ export default function PurchaseRequestsPage() {
     const [requests, setRequests] = useState<PurchaseRequest[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [editingRequest, setEditingRequest] = useState<PurchaseRequest | null>(null)
+    const [searchTerm, setSearchTerm] = useState('')
+    const [filteredRequests, setFilteredRequests] = useState<PurchaseRequest[]>([])
 
     useEffect(() => {
         checkAuth()
@@ -46,105 +57,201 @@ export default function PurchaseRequestsPage() {
 
     const fetchRequests = async () => {
         try {
-            const { data, error } = await supabase
+            // まず購入申請データを取得
+            const { data: requests, error: requestError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    *,
-                    nft_master!nft_id (
+                    id,
+                    created_at,
+                    approved_at,
+                    user_id,
+                    nft_id,
+                    payment_method,
+                    status,
+                    nfts (
+                        id,
                         name,
                         price
                     )
                 `)
                 .order('created_at', { ascending: false })
 
-            if (error) throw error
-            
-            // ユーザーメールアドレスを取得
-            const userIds = data?.map(request => request.user_id) || []
-            const { data: userData, error: userError } = await supabase
+            if (requestError) {
+                console.error('Request error:', requestError)
+                throw requestError
+            }
+
+            // 関連するユーザー情報を別途取得
+            const userIds = requests?.map(request => request.user_id) || []
+            const { data: users, error: userError } = await supabase
                 .from('users')
-                .select('id, email')
+                .select('id, user_id, name_kana, wallet_address')
                 .in('id', userIds)
 
             if (userError) throw userError
 
             // データを結合
-            const formattedData = data?.map(request => ({
-                id: request.id,
-                created_at: request.created_at,
-                payment_method: request.payment_method,
-                status: request.status,
-                user: {
-                    email: userData?.find(u => u.id === request.user_id)?.email || 'Unknown'
-                },
-                nft_master: request.nft_master
-            })) || []
+            const formattedRequests = requests?.map(request => ({
+                ...request,
+                user: users?.find(u => u.id === request.user_id) || { 
+                    name_kana: '不明',
+                    user_id: '不明'
+                }
+            }))
 
-            setRequests(formattedData)
+            setRequests(formattedRequests || [])
         } catch (error: any) {
             console.error('Error fetching requests:', error)
-            setError(error.message)
-        }
-    }
-
-    const handleApprove = async (requestId: string) => {
-        setLoading(true)
-        try {
-            // トランザクションを使用して、申請を承認しNFTを付与
-            const { data: request } = await supabase
-                .from('nft_purchase_requests')
-                .select('*')
-                .eq('id', requestId)
-                .single()
-
-            if (!request) throw new Error('Request not found')
-
-            // user_nftsにレコードを追加
-            const { error: insertError } = await supabase
-                .from('user_nfts')
-                .insert({
-                    user_id: request.user_id,
-                    nft_id: request.nft_id,
-                    status: 'active'
-                })
-
-            if (insertError) throw insertError
-
-            // 申請のステータスを更新
-            const { error: updateError } = await supabase
-                .from('nft_purchase_requests')
-                .update({ status: 'approved' })
-                .eq('id', requestId)
-
-            if (updateError) throw updateError
-
-            // 一覧を再取得
-            fetchRequests()
-
-        } catch (error: any) {
-            console.error('Error approving request:', error)
             setError(error.message)
         } finally {
             setLoading(false)
         }
     }
 
-    const handleReject = async (requestId: string) => {
-        setLoading(true)
+    // 検索フィルター関数
+    useEffect(() => {
+        if (!searchTerm) {
+            setFilteredRequests(requests)
+            return
+        }
+
+        const filtered = requests.filter(request => {
+            const searchTermUpper = searchTerm.toUpperCase()
+            return (
+                request.user.user_id.toUpperCase().includes(searchTermUpper) ||
+                request.user.name_kana.toUpperCase().includes(searchTermUpper)
+            )
+        })
+        setFilteredRequests(filtered)
+    }, [searchTerm, requests])
+
+    const handleApprove = async (request: PurchaseRequest) => {
+        try {
+            // トランザクションで処理
+            const { error: updateError } = await supabase
+                .from('nft_purchase_requests')
+                .update({ 
+                    status: 'approved',
+                    approved_at: new Date().toISOString()
+                })
+                .eq('id', request.id)
+
+            if (updateError) throw updateError
+
+            // NFTの所有者を更新
+            const { error: nftError } = await supabase
+                .from('nfts')
+                .update({ 
+                    owner_id: request.user_id,
+                    last_transferred_at: new Date().toISOString()
+                })
+                .eq('id', request.nft_id)
+
+            if (nftError) throw nftError
+
+            // 一覧を再取得
+            fetchRequests()
+        } catch (error: any) {
+            console.error('Error approving request:', error)
+            setError(error.message)
+        }
+    }
+
+    const handleReject = async (request: PurchaseRequest) => {
         try {
             const { error } = await supabase
                 .from('nft_purchase_requests')
                 .update({ status: 'rejected' })
-                .eq('id', requestId)
+                .eq('id', request.id)
 
             if (error) throw error
             fetchRequests()
-
         } catch (error: any) {
             console.error('Error rejecting request:', error)
             setError(error.message)
-        } finally {
-            setLoading(false)
+        }
+    }
+
+    const handleSave = async (updatedRequest: PurchaseRequest) => {
+        try {
+            // 購入申請の更新
+            const { error: updateError } = await supabase
+                .from('nft_purchase_requests')
+                .update({
+                    created_at: updatedRequest.created_at,
+                    approved_at: updatedRequest.approved_at,
+                    status: updatedRequest.status,
+                    nft_id: updatedRequest.nft_id
+                })
+                .eq('id', updatedRequest.id)
+
+            if (updateError) {
+                console.error('Purchase request update error:', updateError)
+                throw updateError
+            }
+
+            // NFTの所有者情報の更新（承認済みの場合のみ）
+            if (updatedRequest.status === 'approved') {
+                // 1. 新しいNFTの価格を取得
+                const { data: nftData, error: nftError } = await supabase
+                    .from('nfts')
+                    .select('price')
+                    .eq('id', updatedRequest.nft_id)
+                    .single()
+
+                if (nftError) throw nftError
+
+                // 2. ユーザーの全NFT購入履歴を取得
+                const { data: userPurchases, error: purchasesError } = await supabase
+                    .from('nft_purchase_requests')
+                    .select(`
+                        nfts (
+                            price
+                        )
+                    `)
+                    .eq('user_id', updatedRequest.user_id)
+                    .eq('status', 'approved')
+
+                if (purchasesError) throw purchasesError
+
+                // 3. 総投資額を計算
+                const totalInvestment = userPurchases
+                    .reduce((sum, purchase) => sum + (purchase.nfts?.price || 0), 0)
+
+                // 4. ユーザーの投資額を更新
+                const { error: userUpdateError } = await supabase
+                    .from('users')
+                    .update({
+                        investment_amount: totalInvestment
+                    })
+                    .eq('id', updatedRequest.user_id)
+
+                if (userUpdateError) {
+                    console.error('User update error:', userUpdateError)
+                    setError('投資額の更新に失敗しましたが、他の更新は成功しました')
+                }
+
+                // 5. NFTの所有者を更新
+                const { error: nftOwnerError } = await supabase
+                    .from('nfts')
+                    .update({
+                        owner_id: updatedRequest.user_id,
+                        last_transferred_at: updatedRequest.approved_at || new Date().toISOString()
+                    })
+                    .eq('id', updatedRequest.nft_id)
+
+                if (nftOwnerError) {
+                    console.error('NFT owner update error:', nftOwnerError)
+                    setError('NFTの所有者情報の更新に失敗しましたが、他の更新は成功しました')
+                }
+            }
+
+            setEditingRequest(null)
+            fetchRequests()
+            
+        } catch (error: any) {
+            console.error('Error updating request:', error)
+            setError('更新に失敗しました: ' + error.message)
         }
     }
 
@@ -157,7 +264,39 @@ export default function PurchaseRequestsPage() {
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">
                     <div className="container mx-auto px-6 py-8">
-                        <h3 className="text-3xl font-medium text-white mb-8">NFT購入申請一覧</h3>
+                        <h3 className="text-3xl font-medium text-white mb-4">NFT購入申請一覧</h3>
+
+                        {/* 検索ボックスを追加 */}
+                        <div className="mb-6">
+                            <div className="max-w-md">
+                                <label htmlFor="search" className="block text-sm font-medium text-white mb-2">
+                                    ユーザー検索（IDまたは名前）
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        id="search"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        placeholder="ユーザーIDまたは名前で検索..."
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-lg py-2 px-4 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                    />
+                                    {searchTerm && (
+                                        <button
+                                            onClick={() => setSearchTerm('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+                                {searchTerm && (
+                                    <p className="mt-2 text-sm text-gray-400">
+                                        検索結果: {filteredRequests.length} 件
+                                    </p>
+                                )}
+                            </div>
+                        </div>
 
                         {error && (
                             <div className="mb-4 text-red-500">{error}</div>
@@ -168,7 +307,7 @@ export default function PurchaseRequestsPage() {
                                 <thead>
                                     <tr className="bg-gray-700">
                                         <th className="px-6 py-3 text-left text-white">申請日時</th>
-                                        <th className="px-6 py-3 text-left text-white">ユーザー</th>
+                                        <th className="px-6 py-3 text-left text-white">ユーザー情報</th>
                                         <th className="px-6 py-3 text-left text-white">NFT</th>
                                         <th className="px-6 py-3 text-left text-white">価格</th>
                                         <th className="px-6 py-3 text-left text-white">支払方法</th>
@@ -177,19 +316,22 @@ export default function PurchaseRequestsPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700">
-                                    {requests.map((request) => (
+                                    {filteredRequests.map((request) => (
                                         <tr key={request.id} className="hover:bg-gray-750">
                                             <td className="px-6 py-4 text-white">
                                                 {new Date(request.created_at).toLocaleString('ja-JP')}
                                             </td>
                                             <td className="px-6 py-4 text-white">
-                                                {request.user.email}
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium">{request.user.name_kana}</span>
+                                                    <span className="text-sm text-gray-400">ID: {request.user.user_id}</span>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-white">
-                                                {request.nft_master.name}
+                                                {request.nfts.name}
                                             </td>
                                             <td className="px-6 py-4 text-white">
-                                                {request.nft_master.price.toLocaleString()} USDT
+                                                {request.nfts.price.toLocaleString()} USDT
                                             </td>
                                             <td className="px-6 py-4 text-white">
                                                 {request.payment_method === 'bank_transfer' ? '銀行振込' : 'USDT送金'}
@@ -205,24 +347,32 @@ export default function PurchaseRequestsPage() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {request.status === 'pending' && (
-                                                    <div className="space-x-2">
-                                                        <button
-                                                            onClick={() => handleApprove(request.id)}
-                                                            disabled={loading}
-                                                            className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50"
-                                                        >
-                                                            承認
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleReject(request.id)}
-                                                            disabled={loading}
-                                                            className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50"
-                                                        >
-                                                            却下
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                <div className="space-x-2">
+                                                    {request.status === 'pending' && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleApprove(request)}
+                                                                disabled={loading}
+                                                                className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50"
+                                                            >
+                                                                承認
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleReject(request)}
+                                                                disabled={loading}
+                                                                className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50"
+                                                            >
+                                                                却下
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    <button
+                                                        onClick={() => setEditingRequest(request)}
+                                                        className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                                                    >
+                                                        編集
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -231,6 +381,132 @@ export default function PurchaseRequestsPage() {
                         </div>
                     </div>
                 </main>
+            </div>
+
+            {editingRequest && (
+                <EditRequestModal
+                    request={editingRequest}
+                    onClose={() => setEditingRequest(null)}
+                    onSave={handleSave}
+                />
+            )}
+        </div>
+    )
+}
+
+function EditRequestModal({ request, onClose, onSave }: {
+    request: PurchaseRequest
+    onClose: () => void
+    onSave: (updatedRequest: PurchaseRequest) => Promise<void>
+}) {
+    const [formData, setFormData] = useState({
+        created_at: request.created_at,
+        approved_at: request.approved_at || '',
+        status: request.status,
+        nft_id: request.nft_id
+    })
+    const [availableNFTs, setAvailableNFTs] = useState<NFT[]>([])
+
+    // 利用可能なNFTを取得
+    useEffect(() => {
+        const fetchNFTs = async () => {
+            const { data: nfts, error } = await supabase
+                .from('nfts')
+                .select('id, name, price')
+                .order('name')
+
+            if (error) {
+                console.error('Error fetching NFTs:', error)
+                return
+            }
+
+            setAvailableNFTs(nfts || [])
+        }
+
+        fetchNFTs()
+    }, [])
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
+                <h3 className="text-xl font-bold mb-4 text-white">購入履歴の編集</h3>
+                
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-white">NFT</label>
+                        <select
+                            value={formData.nft_id}
+                            onChange={e => setFormData({
+                                ...formData,
+                                nft_id: e.target.value
+                            })}
+                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                            {availableNFTs.map(nft => (
+                                <option key={nft.id} value={nft.id}>
+                                    {nft.name} ({nft.price.toLocaleString()} USDT)
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-white">申請日時</label>
+                        <input
+                            type="datetime-local"
+                            value={formData.created_at.slice(0, 16)}
+                            onChange={e => setFormData({
+                                ...formData,
+                                created_at: new Date(e.target.value).toISOString()
+                            })}
+                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-white">承認日時</label>
+                        <input
+                            type="datetime-local"
+                            value={formData.approved_at?.slice(0, 16) || ''}
+                            onChange={e => setFormData({
+                                ...formData,
+                                approved_at: new Date(e.target.value).toISOString()
+                            })}
+                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-white">ステータス</label>
+                        <select
+                            value={formData.status}
+                            onChange={e => setFormData({
+                                ...formData,
+                                status: e.target.value as PurchaseRequest['status']
+                            })}
+                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                            <option value="pending">処理待ち</option>
+                            <option value="approved">承認済み</option>
+                            <option value="rejected">却下</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex justify-end space-x-2">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors"
+                    >
+                        キャンセル
+                    </button>
+                    <button
+                        onClick={() => onSave({ ...request, ...formData })}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+                    >
+                        保存
+                    </button>
+                </div>
             </div>
         </div>
     )

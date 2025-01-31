@@ -30,17 +30,17 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         confirmPassword: '',
         phone: '',
         referrerId: defaultReferrerId || '',
-        usdtAddress: '',
+        walletAddress: '',
         walletType: 'EVOカード'
     })
 
-    // バリデーションルールの定義
+    // バリデーションルールの修正
     const VALIDATION_PATTERNS = {
         nameKana: /^[ァ-ヶー0-9A-Za-z]+$/,  // カタカナと英数字のみ
         userId: /^[a-zA-Z0-9]{6,}$/,        // 半角英数6文字以上
         phone: /^[0-9]{10,11}$/,            // 数字10-11桁
-        referrerId: /^[a-zA-Z0-9-]+$/,      // 半角英数とハイフンのみ
-        usdtAddress: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
+        referrerId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,  // UUID形式
+        walletAddress: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
     }
 
     // エラーメッセージの定義
@@ -48,8 +48,8 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         nameKana: 'カタカナと英数字のみで入力してください（スペース不可）',
         userId: 'ユーザーIDは半角英数字6文字以上で入力してください',
         phone: '電話番号は10桁または11桁の数字で入力してください',
-        referrerId: '紹介者IDは半角英数字とハイフンのみで入力してください',
-        usdtAddress: '有効なBEP20のUSDTアドレスを入力してください'
+        referrerId: '紹介者IDはUUID形式で入力してください',
+        walletAddress: '有効なBEP20のUSDTアドレスを入力してください'
     }
 
     // バリデーション状態の管理を修正
@@ -61,7 +61,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         confirmPassword: { isValid: true, message: '', touched: false },
         phone: { isValid: true, message: '', touched: false },
         referrerId: { isValid: true, message: '', touched: false },
-        usdtAddress: { isValid: true, message: '', touched: false },
+        walletAddress: { isValid: true, message: '', touched: false },
         walletType: { isValid: true, message: '', touched: false }  // walletTypeを追加
     })
 
@@ -87,10 +87,10 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                 isValid = VALIDATION_PATTERNS.referrerId.test(value)
                 message = isValid ? '' : VALIDATION_MESSAGES.referrerId
                 break
-            case 'usdtAddress':
+            case 'walletAddress':
                 if (value) { // 任意項目なので、値がある場合のみ検証
-                    isValid = VALIDATION_PATTERNS.usdtAddress.test(value)
-                    message = isValid ? '' : VALIDATION_MESSAGES.usdtAddress
+                    isValid = VALIDATION_PATTERNS.walletAddress.test(value)
+                    message = isValid ? '' : VALIDATION_MESSAGES.walletAddress
                 }
                 break
             case 'confirmPassword':
@@ -145,8 +145,8 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
             setError(validation.referrerId.message)
             return
         }
-        if (formData.usdtAddress && !validation.usdtAddress.isValid) {
-            setError(validation.usdtAddress.message)
+        if (formData.walletAddress && !validation.walletAddress.isValid) {
+            setError(validation.walletAddress.message)
             return
         }
 
@@ -167,7 +167,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                         user_id: formData.userId,
                         phone: formData.phone,
                         referrer_id: formData.referrerId,
-                        usdt_address: formData.usdtAddress,
+                        wallet_address: formData.walletAddress,
                         wallet_type: formData.walletType
                     }
                 }
@@ -186,8 +186,11 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                         email: formData.email,
                         phone: formData.phone,
                         referrer_id: formData.referrerId,
-                        usdt_address: formData.usdtAddress,
-                        wallet_type: formData.walletType
+                        wallet_address: formData.walletAddress,
+                        wallet_type: formData.walletType,
+                        active: true,
+                        investment_amount: 0,
+                        level: 'normal'
                     }])
 
                 if (profileError) throw profileError
@@ -441,21 +444,21 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                             </label>
                             <input
                                 type="text"
-                                name="usdtAddress"
-                                value={formData.usdtAddress}
+                                name="walletAddress"
+                                value={formData.walletAddress}
                                 onChange={handleInputChange}
                                 onBlur={handleBlur}
-                                pattern={VALIDATION_PATTERNS.usdtAddress.source}
+                                pattern={VALIDATION_PATTERNS.walletAddress.source}
                                 placeholder="0xで始まるBEP20のUSDTアドレス"
                                 className={`${inputClassName} ${
-                                    validation.usdtAddress.touched && !validation.usdtAddress.isValid 
+                                    validation.walletAddress.touched && !validation.walletAddress.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
                             />
-                            {validation.usdtAddress.touched && !validation.usdtAddress.isValid && (
+                            {validation.walletAddress.touched && !validation.walletAddress.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
-                                    {validation.usdtAddress.message}
+                                    {validation.walletAddress.message}
                                 </p>
                             )}
                         </div>
