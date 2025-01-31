@@ -1,5 +1,7 @@
 import { supabase } from '../supabase';
 import { LevelCalculator } from './level-calculator';
+import { LEVELS, Level } from '../constants/levels';
+import type { NFTType, UserNFT, DailyRate, NFTDailyProfit } from '@/types/nft';
 
 interface WeeklyProfitShare {
     totalProfit: number;        // 会社の総利益
@@ -8,105 +10,82 @@ interface WeeklyProfitShare {
     weekEnd: Date;
 }
 
-interface UserLevel {
-    name: string;
-    shareRate: number;          // 分配率（例：45 = 45%）
-    requirements: {
-        nftAmount: number;      // 必要NFT額（1000以上）
-        maxLine: number;        // 最大系列必要額
-        otherLines: number;     // 他系列必要額
-    }
+interface UserLevelInfo {
+    user_id: string;
+    level: {
+        name: string;
+        share_rate: number;          // 分配率（例：45 = 45%）
+    };
 }
 
 interface NFTMaster {
     price: number
 }
 
-interface UserNFT {
-    nft_master: NFTMaster
+interface NFTDailyLimit {
+    nftType: string;
+    maxDailyReward: number;
 }
 
-// レベル定義
-const LEVELS: UserLevel[] = [
-    {
-        name: '足軽',
-        shareRate: 45,
-        requirements: {
-            nftAmount: 1000,
-            maxLine: 1000,      // 組織全体で1000ドル以上
-            otherLines: 0
-        }
-    },
-    {
-        name: '武将',
-        shareRate: 25,
-        requirements: {
-            nftAmount: 1000,
-            maxLine: 3000,      // 最大系列3000ドル
-            otherLines: 1500    // 他系列全体で1500ドル
-        }
-    },
-    // ... 他のレベル定義
-];
+interface NFTDailyRate {
+    nftType: string;
+    price: number;
+    maxDailyRate: number;  // パーセンテージで指定
+}
+
+// NFT毎の日利上限を定義（%）
+const NFT_DAILY_RATES: { [key: string]: number } = {
+    'SHOGUN NFT300': 0.5,    // 0.5%/日
+    'SHOGUN NFT500': 0.5,    // 0.5%/日
+    'SHOGUN NFT1000': 1.0,   // 1.0%/日
+    'SHOGUN NFT3000': 1.0,   // 1.0%/日
+    'SHOGUN NFT5000': 1.0,   // 1.0%/日
+    'SHOGUN NFT10000': 1.25, // 1.25%/日
+    'SHOGUN NFT30000': 1.5,  // 1.5%/日
+    'SHOGUN NFT50000': 1.75, // 1.75%/日
+    'SHOGUN NFT100000': 2.0  // 2.0%/日
+};
 
 export class RewardCalculator {
-    // 日利計算（複利考慮）
-    static calculateDailyReward(
-        nftAmount: number,
+    // 日利計算（NFTタイプに基づく）
+    static calculateDailyReward(nftType: NFTType, dailyRate: number): number {
+        const maxRate = NFT_DAILY_RATES[nftType.name] || 0.5;
+        const effectiveRate = Math.min(dailyRate, maxRate, nftType.maxDailyRate);
+        return nftType.price * (effectiveRate / 100);
+    }
+
+    // 複利計算
+    static calculateCompoundInterest(
+        principal: number,
         dailyRate: number,
-        isCompound: boolean = false
+        days: number
     ): number {
-        const baseAmount = isCompound ? nftAmount : nftAmount
-        const maxDailyReward = baseAmount * 0.005 // 上限0.5%
-        const calculatedReward = baseAmount * (dailyRate / 100)
-        return Math.min(calculatedReward, maxDailyReward)
+        return principal * Math.pow(1 + dailyRate / 100, days);
     }
 
-    // 週次利益からの分配金計算
-    static async calculateProfitSharing(weeklyProfit: WeeklyProfitShare) {
-        const sharingAmount = weeklyProfit.totalProfit * 0.2; // 総利益の20%を分配
-
-        // 1. 各レベルのユーザーを取得
-        const userLevels = await this.getUserLevels();
-        
-        // 2. レベルごとの合計分配率を計算
-        const totalSharesByLevel = this.calculateTotalSharesByLevel(userLevels);
-
-        // 3. ユーザーごとの分配金を計算
-        return this.calculateUserShares(userLevels, sharingAmount, totalSharesByLevel);
-    }
-
-    // 複利計算（タスク未完了の場合）
-    static calculateCompoundInterest(baseAmount: number, dailyRate: number, days: number) {
-        let amount = baseAmount;
-        for (let i = 0; i < days; i++) {
-            const dailyReward = this.calculateDailyReward(amount, dailyRate, true);
-            amount += dailyReward;
-        }
-        return amount;
-    }
-
-    // ユーザーレベル情報の取得を修正
-    static async getUserLevels() {
+    // ユーザーレベル情報の取得
+    static async getUserLevels(): Promise<UserLevelInfo[]> {
         try {
-            // user_dataテーブルから直接取得
-            const { data, error } = await supabase
-                .from('user_data')
+            const { data: users, error } = await supabase
+                .from('user_nfts')
                 .select(`
-                    id,
-                    name,
-                    investment,
-                    referrer
-                `);
+                    user_id,
+                    nft_type (
+                        id,
+                        name,
+                        price,
+                        maxDailyRate
+                    )
+                `)
+                .eq('isActive', true);
             
             if (error) throw error;
 
-            // レベルを計算
             const usersWithLevels = await Promise.all(
-                (data || []).map(async (user) => {
-                    const level = await LevelCalculator.calculateUserLevel(user.id);
+                (users || []).map(async (user) => {
+                    const level = await LevelCalculator.calculateUserLevel(user.user_id);
                     return {
-                        user_id: user.id,
+                        user_id: user.user_id,
                         level: {
                             name: level?.name || 'なし',
                             share_rate: level?.shareRate || 0
@@ -123,41 +102,20 @@ export class RewardCalculator {
     }
 
     // レベルごとの合計分配率を計算
-    static calculateTotalSharesByLevel(userLevels: any[]) {
+    static calculateTotalSharesByLevel(userLevels: UserLevelInfo[]): { [key: string]: number } {
         return userLevels.reduce((acc, user) => {
             const levelName = user.level.name;
             if (levelName !== 'なし') {
                 acc[levelName] = (acc[levelName] || 0) + user.level.share_rate;
             }
             return acc;
-        }, {});
+        }, {} as { [key: string]: number });
     }
 
-    // ユーザーごとの分配金を計算
-    static calculateUserShares(userLevels: any[], totalAmount: number, totalSharesByLevel: any) {
-        return userLevels.map(user => ({
-            user_id: user.user_id,
-            level_name: user.level.name,
-            share_amount: totalAmount * (user.level.share_rate / totalSharesByLevel[user.level.name])
-        }));
-    }
-
-    // 天下統一ボーナス計算
-    static calculateUnificationBonus(
-        totalInvestment: number,
-        companyProfit: number
-    ): number {
-        // 投資額に応じたボーナス率を計算
-        const bonusRate = this.calculateBonusRate(totalInvestment)
-        return companyProfit * bonusRate
-    }
-
-    // ボーナス率計算
-    private static calculateBonusRate(totalInvestment: number): number {
-        if (totalInvestment >= 100000) return 0.05  // 5%
-        if (totalInvestment >= 50000) return 0.03   // 3%
-        if (totalInvestment >= 10000) return 0.01   // 1%
-        return 0
+    // 分配金計算
+    static async calculateProfitSharing(params: WeeklyProfitShare): Promise<number> {
+        const { totalProfit, sharingAmount } = params;
+        return sharingAmount * 0.2;
     }
 
     // 総報酬計算
@@ -166,61 +124,47 @@ export class RewardCalculator {
         weekStart: Date,
         today: Date
     ): Promise<{
-        dailyRewards: number
-        unificationBonus: number
-        total: number
+        dailyRewards: number;
+        unificationBonus: number;
+        total: number;
     }> {
-        // NFT投資額を取得
-        const { data: rawNftData } = await supabase
+        const { data: userNfts } = await supabase
             .from('user_nfts')
             .select(`
-                nft_master!inner (
-                    price
-                )
+                id,
+                nftType:nft_type (*)
             `)
-            .eq('user_id', userId)
-            .eq('status', 'active')
+            .eq('userId', userId)
+            .eq('isActive', true);
 
-        // データを適切な型に変換
-        const nftData: UserNFT[] = (rawNftData || []).map(item => ({
-            nft_master: {
-                price: item.nft_master[0]?.price || 0
-            }
-        }))
+        const totalDailyRewards = (userNfts || []).reduce((sum, nft) => {
+            if (!nft.nftType) return sum;
+            return sum + this.calculateDailyReward(nft.nftType, 0.5);
+        }, 0);
 
-        // 総投資額を計算
-        const totalInvestment = nftData.reduce(
-            (sum, nft) => sum + nft.nft_master.price,
-            0
-        )
-
-        // 日利を計算（仮の日利率0.5%を使用）
-        const dailyRewards = this.calculateDailyReward(
-            totalInvestment,
-            0.5,  // 日利率
-            false // 複利なし
-        )
-
-        // 会社の利益を取得（仮の実装）
-        const { data: profitData } = await supabase
-            .from('company_profits')
-            .select('profit')
-            .eq('week_start', weekStart.toISOString().split('T')[0])
-            .single()
-
-        const companyProfit = profitData?.profit || 0
-
-        // 天下統一ボーナスを計算
-        const unificationBonus = this.calculateUnificationBonus(
-            totalInvestment,
-            companyProfit
-        )
+        const unificationBonus = await this.calculateUnificationBonus(userId);
 
         return {
-            dailyRewards,
+            dailyRewards: totalDailyRewards,
             unificationBonus,
-            total: dailyRewards + unificationBonus
-        }
+            total: totalDailyRewards + unificationBonus
+        };
+    }
+
+    // 天下統一ボーナス計算
+    private static async calculateUnificationBonus(userId: string): Promise<number> {
+        const { data: userLevel } = await supabase
+            .from('user_levels')
+            .select('level')
+            .eq('user_id', userId)
+            .single();
+
+        if (!userLevel) return 0;
+
+        const level = LEVELS.find(l => l.name === userLevel.level);
+        if (!level) return 0;
+
+        return level.shareRate / 100;
     }
 }
 
