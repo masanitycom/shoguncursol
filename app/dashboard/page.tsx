@@ -109,6 +109,11 @@ export default function DashboardPage() {
         }
     }
 
+    // 総投資額を計算する関数を追加
+    const calculateTotalInvestment = (nfts: NFT[]): number => {
+        return nfts.reduce((total, userNft) => total + userNft.nft.price, 0)
+    }
+
     if (!user) return null
 
     return (
@@ -134,7 +139,9 @@ export default function DashboardPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">総投資額</div>
-                            <div className="text-white text-2xl font-bold">$0</div>
+                            <div className="text-white text-2xl font-bold">
+                                ${loading ? '...' : calculateTotalInvestment(userNFTs).toLocaleString()}
+                            </div>
                         </div>
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">保留中の報酬</div>
