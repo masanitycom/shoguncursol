@@ -18,15 +18,12 @@ console.log('Initializing Supabase client')
 
 // 単一のsupabaseインスタンスを作成
 export const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
         auth: {
             autoRefreshToken: true,
             persistSession: true
-        },
-        db: {
-            schema: 'public'
         }
     }
 )
