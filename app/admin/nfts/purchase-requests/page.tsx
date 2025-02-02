@@ -127,39 +127,44 @@ export default function PurchaseRequestsPage() {
         setFilteredRequests(filtered)
     }, [searchTerm, requests])
 
-    const handleApprove = async (requestId: string) => {
+    const handleApprove = async (request: PurchaseRequest) => {
         try {
             setLoading(true)
             
-            const response = await fetch('/api/admin/nft/approve', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ requestId })
-            })
+            // 購入申請の作成日時を承認日時として使用
+            const approvedAt = request.created_at
 
-            const data = await response.json()
+            // 購入申請を承認状態に更新
+            const { error: updateError } = await supabase
+                .from('nft_purchase_requests')
+                .update({
+                    status: 'approved',
+                    approved_at: approvedAt  // 購入申請の作成日時を設定
+                })
+                .eq('id', request.id)
 
-            if (!response.ok) {
-                throw new Error(data.error || 'NFTの承認に失敗しました')
-            }
+            if (updateError) throw updateError
+
+            // NFTの所有権を登録
+            const { error: nftError } = await supabase
+                .from('user_nfts')
+                .insert({
+                    user_id: request.user_id,
+                    nft_id: request.nft_id,
+                    status: 'active',
+                    purchase_date: approvedAt  // 購入申請の作成日時を設定
+                })
+
+            if (nftError) throw nftError
 
             // 成功メッセージを表示
-            setMessage({
-                type: 'success',
-                text: 'NFTの承認が完了しました'
-            })
-
+            setMessage({ type: 'success', text: 'NFTの購入が承認されました' })
+            
             // リストを更新
             fetchRequests()
-
         } catch (error: any) {
-            console.error('Error approving request:', error)
-            setMessage({
-                type: 'error',
-                text: error.message || 'NFTの承認に失敗しました'
-            })
+            console.error('Error approving NFT:', error)
+            setError(error.message)
         } finally {
             setLoading(false)
         }
@@ -440,7 +445,7 @@ export default function PurchaseRequestsPage() {
                                                     {request.status === 'pending' && (
                                                         <>
                                                             <button
-                                                                onClick={() => handleApprove(request.id)}
+                                                                onClick={() => handleApprove(request)}
                                                                 disabled={loading}
                                                                 className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50"
                                                             >
