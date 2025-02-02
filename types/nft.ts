@@ -35,13 +35,27 @@ export type NFTDailyProfit = {
 }
 
 export interface NFT {
-    id: string
-    name: string
-    price: number
-    daily_rate: number
-    image_url: string
-    purchase_date?: string
-    status?: string
+    id: string;
+    nft_id: string;
+    purchase_date: string;
+    status: string;
+    nft_purchase_requests?: {
+        approved_at: string;
+    }[];
+    nft?: {
+        id: string;
+        name: string;
+        price: number;
+        daily_rate: number;
+        image_url: string | null;
+    };
+    nft_settings?: {
+        id: string;
+        name: string;
+        price: number;
+        daily_rate: number;
+        image_url: string | null;
+    };
 }
 
 export interface NFTPurchaseRequest {

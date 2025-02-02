@@ -26,6 +26,7 @@ interface NFT {
     description: string;
     created_at: string;
     owner_id: string;
+    approved_at: string | null;
 }
 
 // NFT購入リクエストの型定義
@@ -47,6 +48,7 @@ export default function DashboardPage() {
     const [error, setError] = useState<string | null>(null)
     const [levelInfo, setLevelInfo] = useState<{ maxLine: number; otherLines: number; personalInvestment: number } | null>(null)
     const [userData, setUserData] = useState<any>(null)
+    const [nfts, setNfts] = useState<any[]>([])
 
     useEffect(() => {
         initializeDashboard()
@@ -54,7 +56,6 @@ export default function DashboardPage() {
 
     const initializeDashboard = async () => {
         try {
-            // セッションチェック
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) {
                 router.push('/login')
@@ -62,34 +63,67 @@ export default function DashboardPage() {
             }
             setUser(session.user)
 
-            // ユーザーのNFTデータを取得（クエリを修正）
-            const { data: nfts, error: nftsError } = await supabase
+            // 承認済みの購入申請を取得
+            const { data: purchaseRequests, error: requestsError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    *,
-                    nfts (
+                    id,
+                    nft_id,
+                    approved_at,
+                    nft_settings:nft_id (
                         id,
                         name,
                         price,
-                        image_url,
-                        daily_rate
+                        daily_rate,
+                        image_url
                     )
                 `)
                 .eq('user_id', session.user.id)
                 .eq('status', 'approved')
 
-            if (nftsError) throw nftsError
-            
-            // NFTデータを適切な形式に変換
-            const formattedNFTs = nfts?.map(request => ({
-                ...request.nfts,
-                purchase_date: request.created_at,
-                status: request.status
-            })) || []
-            
-            setUserNFTs(formattedNFTs)
+            if (requestsError) throw requestsError
+            setNfts(purchaseRequests || [])
 
-        } catch (error: any) {
+            // レベル情報の取得（カラム名を修正）
+            const { data: levelData, error: levelError } = await supabase
+                .from('user_levels')
+                .select(`
+                    id,
+                    level,
+                    max_line,
+                    other_lines,
+                    personal_investment
+                `)
+                .eq('id', session.user.id)  // user_idではなくidを使用
+                .single()
+
+            if (levelError) {
+                console.error('Level data error:', levelError)
+                // レベルデータが取得できない場合はデフォルト値を設定
+                setLevelInfo({
+                    maxLine: 0,
+                    otherLines: 0,
+                    personalInvestment: 0
+                })
+            } else {
+                setLevelInfo({
+                    maxLine: levelData.max_line || 0,
+                    otherLines: levelData.other_lines || 0,
+                    personalInvestment: levelData.personal_investment || 0
+                })
+            }
+
+            // ユーザーデータの取得
+            const { data: userData, error: userError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single()
+
+            if (userError) throw userError
+            setUserData(userData)
+
+        } catch (error) {
             console.error('Error initializing dashboard:', error)
             setError('データの取得に失敗しました')
         } finally {
@@ -262,36 +296,36 @@ export default function DashboardPage() {
     // NFTデータを取得する部分を一箇所に統一
     const fetchNFTs = async () => {
         try {
-            const { data: fetchedRequests, error } = await supabase
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+
+            // まず承認済みの購入申請を取得
+            const { data: purchaseRequests, error: requestsError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    *,
-                    nfts (*)
+                    id,
+                    nft_id,
+                    approved_at,
+                    nft_settings:nft_id (
+                        id,
+                        name,
+                        price,
+                        daily_rate,
+                        image_url
+                    )
                 `)
                 .eq('user_id', user.id)
-                .eq('status', 'approved');
+                .eq('status', 'approved')
 
-            if (error) throw error;
-            
-            console.log('Fetched requests:', fetchedRequests);
-            setUserNFTs(fetchedRequests?.map(request => request.nfts) || []);
-            setRequests(fetchedRequests || []);
-            return fetchedRequests;
+            if (requestsError) throw requestsError
+            setNfts(purchaseRequests || [])
+
         } catch (error) {
-            console.error('Error fetching NFTs:', error);
-            setError('NFTの取得に失敗しました');
-            return [];
+            console.error('Error fetching NFTs:', error)
         } finally {
             setLoading(false)
         }
     };
-
-    // 初期化時にデータを取得
-    useEffect(() => {
-        if (user) {
-            fetchNFTs();
-        }
-    }, [user]);
 
     if (loading) {
         return (
@@ -467,39 +501,29 @@ export default function DashboardPage() {
                         {loading ? (
                             <div className="text-center text-gray-400">読み込み中...</div>
                         ) : (
-                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                                {userNFTs.map((userNft) => (
-                                    <div key={userNft.id} 
-                                        className="bg-gray-700 rounded-lg overflow-hidden hover:bg-gray-600 transition-all duration-200 transform hover:-translate-y-1"
-                                    >
-                                        <div className="aspect-square relative w-full">
-                                            {userNft.image_url ? (
-                                                <img
-                                                    src={userNft.image_url}
-                                                    alt={userNft.name}
-                                                    className="w-full h-full object-cover"
-                                                    loading="lazy"
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                                    <span className="text-gray-400">No image</span>
-                                                </div>
-                                            )}
-                                            <div className="absolute top-2 right-2 bg-emerald-500 text-white text-xs px-2 py-0.5 rounded-full">
-                                                Active
-                                            </div>
+                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                                {nfts.map((nft) => (
+                                    <div key={nft.id} className="bg-gray-700 rounded-lg overflow-hidden">
+                                        <div className="w-3/4 mx-auto">
+                                            <img
+                                                src={nft.nft_settings?.image_url || '/images/nft-placeholder.png'}
+                                                alt={nft.nft_settings?.name}
+                                                className="w-full aspect-square object-cover rounded-lg shadow-lg"
+                                            />
                                         </div>
-                                        <div className="p-3">
-                                            <h3 className="font-bold text-white text-sm mb-1">{userNft.name}</h3>
-                                            <div className="space-y-1 text-sm">
-                                                <p className="text-emerald-400">${userNft.price.toLocaleString()}</p>
-                                                <p className="text-blue-400">
-                                                    日利上限: {(userNft.daily_rate * 100).toFixed(2)}%
-                                                </p>
-                                                <p className="text-gray-400">
-                                                    購入日: {new Date(userNft.created_at).toLocaleDateString('ja-JP')}
-                                                </p>
-                                            </div>
+                                        <div className="p-4">
+                                            <h3 className="font-bold text-white text-lg mb-2">
+                                                {nft.nft_settings?.name}
+                                            </h3>
+                                            <p className="text-gray-300">
+                                                価格: ${nft.nft_settings?.price?.toLocaleString()}
+                                            </p>
+                                            <p className="text-gray-300">
+                                                日利: {(nft.nft_settings?.daily_rate || 0) * 100}%
+                                            </p>
+                                            <p className="text-gray-400 text-sm">
+                                                購入日: {new Date(nft.approved_at).toLocaleDateString('ja-JP')}
+                                            </p>
                                         </div>
                                     </div>
                                 ))}

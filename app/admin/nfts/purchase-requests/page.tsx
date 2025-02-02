@@ -41,6 +41,7 @@ export default function PurchaseRequestsPage() {
     const [searchTerm, setSearchTerm] = useState('')
     const [filteredRequests, setFilteredRequests] = useState<PurchaseRequest[]>([])
     const [deletingRequest, setDeletingRequest] = useState<PurchaseRequest | null>(null)
+    const [message, setMessage] = useState<{ type: string; text: string } | null>(null)
 
     useEffect(() => {
         checkAuth()
@@ -126,32 +127,41 @@ export default function PurchaseRequestsPage() {
         setFilteredRequests(filtered)
     }, [searchTerm, requests])
 
-    const handleApprove = async (request: PurchaseRequest) => {
+    const handleApprove = async (requestId: string) => {
         try {
+            setLoading(true)
+            
             const response = await fetch('/api/admin/nft/approve', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    nftRequest: request,
-                    userId: request.user_id
-                })
+                body: JSON.stringify({ requestId })
             })
 
             const data = await response.json()
 
             if (!response.ok) {
-                console.error('API Error:', data)
-                throw new Error(data.error + (data.details ? `\n${JSON.stringify(data.details)}` : ''))
+                throw new Error(data.error || 'NFTの承認に失敗しました')
             }
 
-            // 一覧を再取得
-            await fetchRequests()
+            // 成功メッセージを表示
+            setMessage({
+                type: 'success',
+                text: 'NFTの承認が完了しました'
+            })
+
+            // リストを更新
+            fetchRequests()
 
         } catch (error: any) {
             console.error('Error approving request:', error)
-            setError(error.message)
+            setMessage({
+                type: 'error',
+                text: error.message || 'NFTの承認に失敗しました'
+            })
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -430,7 +440,7 @@ export default function PurchaseRequestsPage() {
                                                     {request.status === 'pending' && (
                                                         <>
                                                             <button
-                                                                onClick={() => handleApprove(request)}
+                                                                onClick={() => handleApprove(request.id)}
                                                                 disabled={loading}
                                                                 className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50"
                                                             >
