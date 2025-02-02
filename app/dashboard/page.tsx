@@ -49,50 +49,53 @@ export default function DashboardPage() {
     const [userData, setUserData] = useState<any>(null)
 
     useEffect(() => {
-        const initializeDashboard = async () => {
-            try {
-                // 認証チェック
-                const { data: { session } } = await supabase.auth.getSession()
-                if (!session) {
-                    router.push('/login')
-                    return
-                }
-                setUser(session.user)
-
-                // ユーザーデータの取得
-                const { data: userData, error: userError } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single()
-
-                if (userError) throw userError
-                setUserData(userData)
-
-                // NFTデータの取得
-                const { data: requests, error: nftsError } = await supabase
-                    .from('nft_purchase_requests')
-                    .select(`
-                        *,
-                        nfts (*)
-                    `)
-                    .eq('user_id', session.user.id)
-                    .eq('status', 'approved')
-
-                if (nftsError) throw nftsError
-                const nfts = requests?.map(request => request.nfts) || []
-                setUserNFTs(nfts)
-
-            } catch (error) {
-                console.error('Error initializing dashboard:', error)
-                setError('データの取得に失敗しました')
-            } finally {
-                setLoading(false)
-            }
-        }
-
         initializeDashboard()
-    }, []) // 初回のみ実行
+    }, [])
+
+    const initializeDashboard = async () => {
+        try {
+            // セッションチェック
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session) {
+                router.push('/login')
+                return
+            }
+            setUser(session.user)
+
+            // ユーザーのNFTデータを取得（クエリを修正）
+            const { data: nfts, error: nftsError } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    *,
+                    nfts (
+                        id,
+                        name,
+                        price,
+                        image_url,
+                        daily_rate
+                    )
+                `)
+                .eq('user_id', session.user.id)
+                .eq('status', 'approved')
+
+            if (nftsError) throw nftsError
+            
+            // NFTデータを適切な形式に変換
+            const formattedNFTs = nfts?.map(request => ({
+                ...request.nfts,
+                purchase_date: request.created_at,
+                status: request.status
+            })) || []
+            
+            setUserNFTs(formattedNFTs)
+
+        } catch (error: any) {
+            console.error('Error initializing dashboard:', error)
+            setError('データの取得に失敗しました')
+        } finally {
+            setLoading(false)
+        }
+    }
 
     // 総投資額を計算する関数を追加
     const calculateTotalInvestment = (nfts: NFT[]): number => {
@@ -278,6 +281,8 @@ export default function DashboardPage() {
             console.error('Error fetching NFTs:', error);
             setError('NFTの取得に失敗しました');
             return [];
+        } finally {
+            setLoading(false)
         }
     };
 
@@ -288,6 +293,24 @@ export default function DashboardPage() {
         }
     }, [user]);
 
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <div className="text-white">読み込み中...</div>
+            </div>
+        )
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <div className="text-white bg-red-600 p-4 rounded-lg">
+                    {error}
+                </div>
+            </div>
+        )
+    }
+
     if (!user) return null
 
     return (
@@ -296,18 +319,6 @@ export default function DashboardPage() {
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-7xl mx-auto">
                     <h1 className="text-3xl font-bold text-white mb-8">ダッシュボード</h1>
-
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-900/50 border-l-4 border-red-500 text-red-200 rounded">
-                            {error}
-                        </div>
-                    )}
-
-                    {!userNFTs.length && (
-                        <div className="text-gray-400 mb-6">
-                            NFTを所有していません
-                        </div>
-                    )}
 
                     {/* 統計カード */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">

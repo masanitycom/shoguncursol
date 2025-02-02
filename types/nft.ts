@@ -37,10 +37,18 @@ export type NFTDailyProfit = {
 export interface NFT {
     id: string
     name: string
-    description: string
-    image_url: string
     price: number
-    owner_id: string | null
+    daily_rate: number
+    image_url: string
+    purchase_date?: string
+    status?: string
+}
+
+export interface NFTPurchaseRequest {
+    id: string
+    user_id: string
+    nft_id: string
+    status: 'pending' | 'approved' | 'rejected'
     created_at: string
-    status: 'available' | 'sold' | 'locked'
+    nfts?: NFT
 } 
