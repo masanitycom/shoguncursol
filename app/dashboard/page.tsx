@@ -328,26 +328,14 @@ export default function DashboardPage() {
     };
 
     // NFTデータを取得する部分を修正
-    const fetchNFTs = async (userId?: string) => {
+    const fetchNFTs = async (userId: string) => {
         try {
-            if (!userId) {
-                console.log('No user ID provided');
-                return [];
-            }
-
-            console.log('Fetching NFTs for user:', userId);
-
-            // 購入リクエストとNFTデータを同時に取得
-            const { data: requests, error: requestError } = await supabase
+            console.log('Fetching NFTs for user:', userId)
+            const { data: requests, error } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    id,
-                    user_id,
-                    nft_id,
-                    status,
-                    created_at,
-                    approved_at,
-                    nfts (
+                    *,
+                    nfts:nft_settings (
                         id,
                         name,
                         price,
@@ -356,20 +344,22 @@ export default function DashboardPage() {
                     )
                 `)
                 .eq('user_id', userId)
-                .eq('status', 'approved');
+                .eq('status', 'approved')  // 承認済みのみを取得
+                .order('approved_at', { ascending: false })
 
-            if (requestError) {
-                console.error('Request fetch error:', requestError);
-                throw requestError;
-            }
+            if (error) throw error
 
-            console.log('Purchase requests:', requests);
+            console.log('Purchase requests:', requests)
 
-            // データを変換
-            const nftData = requests?.map(request => {
+            // 重複を除去してデータを変換
+            const uniqueNFTs = Array.from(new Map(
+                requests.map(request => [request.nft_id, request])
+            ).values())
+
+            const nftData = uniqueNFTs.map(request => {
                 if (!request.nfts) {
-                    console.log(`No NFT data found for id: ${request.nft_id}`);
-                    return null;
+                    console.log(`No NFT data found for id: ${request.nft_id}`)
+                    return null
                 }
 
                 return {
@@ -379,24 +369,24 @@ export default function DashboardPage() {
                     daily_rate: parseFloat(request.nfts.daily_rate || '1.0'),
                     image_url: request.nfts.image_url,
                     created_at: request.approved_at || request.created_at
-                };
-            }).filter(Boolean);
+                }
+            }).filter(Boolean)
 
-            console.log('Processed NFT data:', nftData);
+            console.log('Processed NFT data:', nftData)
 
             if (nftData && nftData.length > 0) {
-                setUserNFTs(nftData);
-                setRequests(requests);
-                console.log('NFT data set successfully:', nftData);
+                setUserNFTs(nftData)
+                setRequests(requests)
+                console.log('NFT data set successfully:', nftData)
             }
 
-            return nftData;
+            return nftData
         } catch (error: any) {
-            console.error('Error fetching NFTs:', error);
-            setError('NFTの取得に失敗しました');
-            return [];
+            console.error('Error fetching NFTs:', error)
+            setError('NFTの取得に失敗しました')
+            return []
         }
-    };
+    }
 
     // ログアウト処理を修正
     const handleLogout = async () => {
@@ -480,7 +470,7 @@ export default function DashboardPage() {
                             <div className="text-white text-2xl font-bold">
                                 {userNFTs.length > 0 ? (
                                     <span onClick={async () => {
-                                        const fetchedRequests = await fetchNFTs();
+                                        const fetchedRequests = await fetchNFTs(user.id);
                                         const rewards = calculateCompoundRewards(fetchedRequests || []);
                                         console.log('Calculated rewards:', rewards);
                                     }}>
@@ -585,14 +575,9 @@ export default function DashboardPage() {
                             <div className="text-center text-gray-400">読み込み中...</div>
                         ) : userNFTs && userNFTs.length > 0 ? (
                             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                                {userNFTs.map((nft) => (
-                                    <div key={nft.id} className="bg-gray-700 rounded-lg overflow-hidden">
-                                        <NFTCard 
-                                            nft={{
-                                                ...nft,
-                                                created_at: formatDateToJST(nft.created_at)
-                                            }} 
-                                        />
+                                {userNFTs.map((nft, index) => (
+                                    <div key={`${nft.id}-${index}`} className="bg-gray-700 rounded-lg overflow-hidden">
+                                        <NFTCard nft={nft} />
                                     </div>
                                 ))}
                             </div>

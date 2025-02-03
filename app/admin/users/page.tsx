@@ -8,14 +8,15 @@ import AdminSidebar from '@/components/AdminSidebar'
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 
 interface User {
-    id: string
-    email: string
-    user_id: string
-    name_kana: string
-    wallet_address: string
-    wallet_type: string
-    created_at: string
-    active: boolean
+    id: string;
+    email: string;
+    user_id: string;
+    name: string;         // 名前
+    name_kana: string;    // フリガナ
+    wallet_address: string;
+    wallet_type: string;
+    created_at: string;
+    active: boolean;
 }
 
 interface EditingUser extends User {
@@ -26,7 +27,16 @@ export default function AdminUsersPage() {
     const router = useRouter()
     const [users, setUsers] = useState<EditingUser[]>([])
     const [loading, setLoading] = useState(true)
-    const [editForm, setEditForm] = useState<EditingUser | null>(null)
+    const [selectedUser, setSelectedUser] = useState<User | null>(null)
+    const [editForm, setEditForm] = useState({
+        name: '',
+        email: '',
+        wallet_address: '',
+        wallet_type: 'EVOカード'
+    })
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [success, setSuccess] = useState<string | null>(null)
 
     useEffect(() => {
         checkAuth()
@@ -49,6 +59,7 @@ export default function AdminUsersPage() {
                     id,
                     email,
                     user_id,
+                    name,
                     name_kana,
                     wallet_address,
                     wallet_type,
@@ -68,41 +79,43 @@ export default function AdminUsersPage() {
     }
 
     const handleEdit = (user: User) => {
-        setEditForm(user)
-        setUsers(users.map(u => ({
-            ...u,
-            isEditing: u.id === user.id
-        })))
+        setSelectedUser(user)
+        setEditForm({
+            name: user.name || '',           // 名前
+            email: user.email || '',
+            wallet_address: user.wallet_address || '',
+            wallet_type: user.wallet_type || 'EVOカード'
+        })
+        setIsEditModalOpen(true)
     }
 
-    const handleCancel = () => {
-        setEditForm(null)
-        setUsers(users.map(u => ({ ...u, isEditing: false })))
-    }
+    const handleUpdateUser = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedUser) return
 
-    const handleUpdate = async (userId: string) => {
-        if (!editForm) return
+        setError(null)
+        setSuccess(null)
 
         try {
-            // プロフィール情報の更新
-            const { error } = await supabase
+            // プロフィール情報の更新（users テーブル）
+            const { error: profileError } = await supabase
                 .from('users')
                 .update({
-                    name_kana: editForm.name_kana,
+                    name: editForm.name,          // 名前を更新
                     email: editForm.email,
                     wallet_address: editForm.wallet_address,
                     wallet_type: editForm.wallet_type
                 })
-                .eq('id', userId)
+                .eq('id', selectedUser.id)
 
-            if (error) throw error
+            if (profileError) throw profileError
 
-            handleCancel()
-            fetchUsers()
-            alert('更新が完了しました')
-        } catch (error) {
-            console.error('Error updating user:', error)
-            alert('更新に失敗しました')
+            setSuccess('ユーザー情報を更新しました')
+            fetchUsers() // ユーザー一覧を再取得
+            setIsEditModalOpen(false)
+        } catch (error: any) {
+            console.error('Update error:', error)
+            setError('ユーザー情報の更新に失敗しました: ' + error.message)
         }
     }
 
@@ -179,8 +192,9 @@ export default function AdminUsersPage() {
                                                 <td className="p-4">{user.user_id}</td>
                                                 <td className="p-4">
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium">{user.name_kana || '未設定'}</span>
+                                                        <span className="font-medium">{user.name || '未設定'}</span>
                                                         <span className="text-sm text-gray-400">{user.email}</span>
+                                                        <span className="text-xs text-gray-500">ID: {user.user_id}</span>
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
@@ -213,43 +227,24 @@ export default function AdminUsersPage() {
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex items-center space-x-1">
-                                                        {user.isEditing ? (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleUpdate(user.id)}
-                                                                    className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
-                                                                >
-                                                                    保存
-                                                                </button>
-                                                                <button
-                                                                    onClick={handleCancel}
-                                                                    className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs"
-                                                                >
-                                                                    キャンセル
-                                                                </button>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleEdit(user)}
-                                                                    className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs whitespace-nowrap"
-                                                                >
-                                                                    編集
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => updateUserStatus(user.id, !user.active)}
-                                                                    className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs whitespace-nowrap"
-                                                                >
-                                                                    {user.active ? '無効化' : '有効化'}
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => deleteUser(user.id)}
-                                                                    className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs whitespace-nowrap"
-                                                                >
-                                                                    削除
-                                                                </button>
-                                                            </>
-                                                        )}
+                                                        <button
+                                                            onClick={() => handleEdit(user)}
+                                                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs whitespace-nowrap"
+                                                        >
+                                                            編集
+                                                        </button>
+                                                        <button
+                                                            onClick={() => updateUserStatus(user.id, !user.active)}
+                                                            className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs whitespace-nowrap"
+                                                        >
+                                                            {user.active ? '無効化' : '有効化'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => deleteUser(user.id)}
+                                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs whitespace-nowrap"
+                                                        >
+                                                            削除
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -261,6 +256,68 @@ export default function AdminUsersPage() {
                     </div>
                 </main>
             </div>
+            {isEditModalOpen && selectedUser && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 p-6 rounded-lg w-96">
+                        <h3 className="text-xl font-bold text-white mb-4">ユーザー情報の編集</h3>
+                        <form onSubmit={handleUpdateUser} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">名前</label>
+                                <input
+                                    type="text"
+                                    value={editForm.name}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">メールアドレス</label>
+                                <input
+                                    type="email"
+                                    value={editForm.email}
+                                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">ウォレットアドレス</label>
+                                <input
+                                    type="text"
+                                    value={editForm.wallet_address}
+                                    onChange={(e) => setEditForm({ ...editForm, wallet_address: e.target.value })}
+                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">ウォレットの種類</label>
+                                <select
+                                    value={editForm.wallet_type}
+                                    onChange={(e) => setEditForm({ ...editForm, wallet_type: e.target.value })}
+                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                >
+                                    <option value="EVOカード">EVOカード</option>
+                                    <option value="その他">その他のウォレット</option>
+                                </select>
+                            </div>
+                            <div className="flex justify-end space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditModalOpen(false)}
+                                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+                                >
+                                    キャンセル
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
+                                >
+                                    保存
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     )
 } 
