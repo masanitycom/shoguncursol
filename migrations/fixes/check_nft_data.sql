@@ -91,4 +91,48 @@ SELECT
 FROM nft_settings ns
 JOIN nft_purchase_requests npr ON ns.id = npr.nft_id
 WHERE npr.user_id = 'fb5bfcf3-c45e-40fc-8815-4f0f4ea9ea33'
-AND npr.status = 'approved'; 
+AND npr.status = 'approved';
+
+-- NFTデータの整合性を確認
+SELECT 
+    npr.id as request_id,
+    npr.user_id,
+    npr.nft_id,
+    npr.status,
+    ns.id as settings_id,
+    ns.name,
+    ns.price,
+    ns.daily_rate,
+    ns.image_url
+FROM nft_purchase_requests npr
+INNER JOIN nft_settings ns ON npr.nft_id = ns.id
+WHERE npr.status = 'approved'
+AND npr.user_id = 'fb5bfcf3-c45e-40fc-8815-4f0f4ea9ea33'
+ORDER BY npr.created_at DESC;
+
+-- 購入リクエストの状態を確認
+SELECT 
+    npr.id as request_id,
+    npr.user_id,
+    npr.nft_id,
+    npr.status,
+    npr.approved_at,
+    ns.name as nft_name,
+    ns.price as nft_price,
+    ns.daily_rate,
+    ns.status as nft_status
+FROM nft_purchase_requests npr
+LEFT JOIN nft_settings ns ON npr.nft_id = ns.id
+WHERE npr.user_id = 'fb5bfcf3-c45e-40fc-8815-4f0f4ea9ea33'
+AND npr.status = 'approved'
+ORDER BY npr.approved_at DESC;
+
+-- NFTの所有状態を確認
+SELECT 
+    ns.*,
+    npr.approved_at,
+    npr.status as request_status
+FROM nft_settings ns
+LEFT JOIN nft_purchase_requests npr ON ns.id = npr.nft_id
+WHERE ns.owner_id = 'fb5bfcf3-c45e-40fc-8815-4f0f4ea9ea33'
+OR npr.user_id = 'fb5bfcf3-c45e-40fc-8815-4f0f4ea9ea33'; 

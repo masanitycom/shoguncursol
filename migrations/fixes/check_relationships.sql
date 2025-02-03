@@ -1,9 +1,9 @@
--- 外部キー関係を確認
+-- 外部キー制約の確認
 SELECT
     tc.table_schema, 
+    tc.constraint_name, 
     tc.table_name, 
-    kcu.column_name,
-    ccu.table_schema AS foreign_table_schema,
+    kcu.column_name, 
     ccu.table_name AS foreign_table_name,
     ccu.column_name AS foreign_column_name 
 FROM 

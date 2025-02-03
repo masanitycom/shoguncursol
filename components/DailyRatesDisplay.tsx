@@ -16,43 +16,23 @@ export default function DailyRatesDisplay() {
     useEffect(() => {
         const fetchDailyRates = async () => {
             try {
-                // 承認済みのNFT購入リクエストを取得
-                const { data: nftData, error: nftError } = await supabase
-                    .from('nft_purchase_requests')
-                    .select(`
-                        nft_settings (
-                            id,
-                            name,
-                            price
-                        )
-                    `)
-                    .eq('status', 'approved')
+                const { data: nftSettings, error } = await supabase
+                    .from('nft_settings')
+                    .select('name, price, daily_rate')
+                    .order('price', { ascending: true })
 
-                if (nftError) throw nftError
+                if (error) throw error
 
-                // 日利データを取得
-                const { data: ratesData, error: ratesError } = await supabase
-                    .from('nft_daily_profits')
-                    .select('date, rate')
-                    .order('date', { ascending: false })
-                    .limit(7)
+                const rates = nftSettings.map(nft => ({
+                    date: new Date().toISOString().split('T')[0],
+                    rate: parseFloat(nft.daily_rate || '1.0')
+                }))
 
-                if (ratesError) throw ratesError
-
-                // データが存在しない場合はダミーデータを表示
-                if (!ratesData || ratesData.length === 0) {
-                    const dummyRates = Array.from({ length: 7 }, (_, i) => ({
-                        date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                        rate: 0.1 + Math.random() * 0.3
-                    }))
-                    setRates(dummyRates)
-                } else {
-                    setRates(ratesData)
-                }
-            } catch (err) {
-                console.error('Error fetching daily rates:', err)
+                setRates(rates)
+                setLoading(false)
+            } catch (error) {
+                console.error('Error fetching daily rates:', error)
                 setError('日利の取得に失敗しました')
-            } finally {
                 setLoading(false)
             }
         }
@@ -67,8 +47,8 @@ export default function DailyRatesDisplay() {
         <div className="bg-gray-800 p-4 rounded-lg">
             <h3 className="text-xl font-bold text-white mb-4">直近7日間の日利</h3>
             <div className="space-y-2">
-                {rates.map((rate) => (
-                    <div key={rate.date} className="flex justify-between text-gray-300">
+                {rates.map((rate, index) => (
+                    <div key={`${rate.date}-${index}`} className="flex justify-between text-gray-300">
                         <span>{new Date(rate.date).toLocaleDateString('ja-JP')}</span>
                         <span className="text-blue-400">{rate.rate.toFixed(2)}%</span>
                     </div>
