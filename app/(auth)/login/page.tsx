@@ -27,20 +27,19 @@ export default function LoginPage() {
         setError(null)
 
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email,
                 password
             })
 
-            if (error) throw error
+            if (authError) throw authError
 
-            // ユーザーが存在することを確認
-            if (!data.user) {
+            if (!authData.user) {
                 throw new Error('ユーザーが見つかりません')
             }
 
-            // ここでユーザーが確実に存在する
-            if (data.user.email === 'testadmin@gmail.com') {
+            // 管理者とユーザーで画面を分ける
+            if (email === 'testadmin@gmail.com') {
                 router.push('/admin/dashboard')
             } else {
                 router.push('/dashboard')
@@ -48,7 +47,7 @@ export default function LoginPage() {
 
         } catch (error) {
             console.error('Login error:', error)
-            setError(error instanceof Error ? error.message : 'ログインに失敗しました')
+            setError(getErrorMessage(error))
         } finally {
             setLoading(false)
         }

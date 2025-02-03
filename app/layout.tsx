@@ -9,8 +9,11 @@ const notoSansJP = Noto_Sans_JP({
 })
 
 export const metadata: Metadata = {
-  title: 'Shogun Trade System',
-  description: 'NFTトレーディングシステム',
+  title: 'Shogun Trade',
+  description: 'NFTトレーディングプラットフォーム',
+  icons: {
+    icon: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({

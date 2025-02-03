@@ -64,5 +64,12 @@ export interface NFTPurchaseRequest {
     nft_id: string
     status: 'pending' | 'approved' | 'rejected'
     created_at: string
-    nfts?: NFT
+    approved_at?: string
+    nft?: {
+        id: string
+        name: string
+        price: number
+        daily_rate: number
+        image_url: string | null
+    }
 } 

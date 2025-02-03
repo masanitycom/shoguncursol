@@ -7,8 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "migrate": "node-pg-migrate",
+    "migrate:up": "ts-node scripts/execute-sql.ts",
+    "migrate:down": "node-pg-migrate down",
+    "fix-db": "ts-node scripts/fix-relationships.ts",
     "setup-users": "ts-node scripts/setup-users.ts",
-    "setup-nfts": "ts-node --project tsconfig.json scripts/nft/setup.ts"
+    "setup-nfts": "ts-node --project tsconfig.json scripts/nft/setup.ts",
+    "test-db": "ts-node scripts/test-db-connection.ts",
+    "check-db": "ts-node scripts/check-database-structure.ts",
+    "check-nft": "ts-node scripts/check-nft-relationships.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
@@ -24,14 +31,17 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^20.17.16",
     "@types/nodemailer": "^6.4.17",
     "@types/papaparse": "^5.3.15",
+    "@types/pg": "^8.11.11",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.17",
     "eslint": "^8",
     "eslint-config-next": "14.1.0",
+    "node-pg-migrate": "^7.9.0",
+    "pg": "^8.13.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "ts-node": "^10.9.2",

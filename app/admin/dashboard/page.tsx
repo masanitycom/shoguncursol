@@ -15,6 +15,21 @@ import {
     GiftIcon
 } from '@heroicons/react/24/outline'
 
+interface NFT {
+    id: string;
+    name: string;
+    price: number;
+}
+
+interface PurchaseRequest {
+    id: string;
+    user_id: string;
+    nft_id: string;
+    status: string;
+    created_at: string;
+    nfts: NFT | null;  // nullableな単一のNFTオブジェクト
+}
+
 interface DashboardStats {
     totalUsers: number
     activeUsers: number
@@ -22,6 +37,21 @@ interface DashboardStats {
     monthlyRevenue: number
     pendingPurchases: number
     pendingAirdrops: number
+}
+
+interface NFTPurchaseRequest {
+    id: string
+    user_id: string
+    nft_id: string
+    status: 'pending' | 'approved' | 'rejected'
+    created_at: string
+    nfts?: {
+        id: string
+        name: string
+        price: number
+        daily_rate: number
+        image_url: string | null
+    }
 }
 
 export default function AdminDashboardPage() {
@@ -36,6 +66,7 @@ export default function AdminDashboardPage() {
         pendingAirdrops: 0
     })
     const [loading, setLoading] = useState(true)
+    const [pendingPurchases, setPendingPurchases] = useState<NFTPurchaseRequest[]>([])
 
     useEffect(() => {
         checkAuth()
@@ -68,13 +99,13 @@ export default function AdminDashboardPage() {
                     user_id,
                     nft_id,
                     status,
-                    nfts (
+                    created_at,
+                    nfts!inner (
                         id,
                         name,
                         price
                     )
-                `)
-                .eq('status', 'approved')
+                `) as { data: PurchaseRequest[] | null, error: any }
 
             if (purchasesError) {
                 console.error('NFT Purchases Error:', purchasesError)
@@ -84,8 +115,9 @@ export default function AdminDashboardPage() {
             console.log('Raw NFT Purchases:', nftPurchases)
             console.log('Purchase Count:', nftPurchases?.length || 0)
             
+            // 型アサーションを追加してクエリ結果の型を明示
             if (nftPurchases && nftPurchases.length > 0) {
-                nftPurchases.forEach(purchase => {
+                nftPurchases.forEach((purchase: PurchaseRequest) => {
                     console.log('Purchase Detail:', {
                         purchaseId: purchase.id,
                         userId: purchase.user_id,
@@ -128,26 +160,64 @@ export default function AdminDashboardPage() {
             })
 
             // 保留中の申請も同様に修正
-            const { data: pendingPurchases } = await supabase
-                .from('nft_purchase_requests')
-                .select('*, nfts(*)')
-                .eq('status', 'pending')
-
-            const { data: airdrops } = await supabase
-                .from('task_responses')
-                .select('*')
-                .eq('status', 'pending')
+            await fetchPendingPurchases()
+            const airdrops = await fetchAirdrops()
 
             setStats(prev => ({
                 ...prev,
-                pendingPurchases: pendingPurchases?.length || 0,
-                pendingAirdrops: airdrops?.length || 0
+                pendingPurchases: pendingPurchases.length,
+                pendingAirdrops: airdrops.length
             }))
 
         } catch (error) {
             console.error('Error fetching stats:', error)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const fetchPendingPurchases = async () => {
+        try {
+            const { data: purchases, error } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    *,
+                    nfts:nft_settings (
+                        id,
+                        name,
+                        price,
+                        daily_rate,
+                        image_url
+                    )
+                `)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+                .limit(5)
+
+            if (error) throw error
+
+            // 型アサーションを使用して、データが期待する形式であることを保証
+            setPendingPurchases(purchases as NFTPurchaseRequest[])
+
+        } catch (error) {
+            console.error('Error fetching pending purchases:', error)
+        }
+    }
+
+    const fetchAirdrops = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('task_responses')
+                .select('*')
+                .eq('status', 'pending')
+
+            if (error) throw error
+
+            return data || []
+
+        } catch (error) {
+            console.error('Error fetching airdrops:', error)
+            return []
         }
     }
 

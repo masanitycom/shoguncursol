@@ -1,42 +1,45 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { 
-    ShoppingCartIcon, 
-    GiftIcon, 
-    ClockIcon, 
+import {
+    ShoppingCartIcon,
+    GiftIcon,
+    ClockIcon,
     UsersIcon,
     UserIcon
 } from '@heroicons/react/24/outline'
 import DailyRatesDisplay from '@/components/DailyRatesDisplay'
 import { LEVELS } from '@/lib/constants/levels'
+import { NFTCard } from '@/components/NFTCard'
 
-// NFTの型定義
+// NFTの型定義を修正
 interface NFT {
     id: string;
     name: string;
     price: number;
     daily_rate: number;
-    status: string;
-    image_url: string;
-    description: string;
+    image_url: string | null;
     created_at: string;
-    owner_id: string;
-    approved_at: string | null;
 }
 
-// NFT購入リクエストの型定義
+// NFT購入リクエストの型定義を修正
 interface NFTPurchaseRequest {
     id: string;
     user_id: string;
+    nft_id: string;
+    status: string;
     created_at: string;
     approved_at: string | null;
-    nft_id: string;
-    nfts: NFT;
+    nft_name: string;
+    nft_price: number;
+    nft_daily_rate: number;
+    nft_image_url: string | null;
+    user_email: string;
+    user_display_name: string | null;
 }
 
 export default function DashboardPage() {
@@ -51,8 +54,81 @@ export default function DashboardPage() {
     const [nfts, setNfts] = useState<any[]>([])
 
     useEffect(() => {
-        initializeDashboard()
-    }, [])
+        let isMounted = true;
+
+        const initializeAuth = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    router.push('/login');
+                    return;
+                }
+
+                // 管理者のアクセスを制限
+                if (session.user.email === 'testadmin@gmail.com') {
+                    router.push('/admin/dashboard');
+                    return;
+                }
+
+                if (isMounted) {
+                    setUser(session.user);
+                    setLoading(false);
+                }
+            } catch (error) {
+                console.error('Auth initialization error:', error);
+                setLoading(false);
+            }
+        };
+
+        initializeAuth();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth state changed:', event, session?.user?.email);
+            if (event === 'SIGNED_OUT') {
+                setUser(null);
+                setUserNFTs([]);
+                router.push('/login');
+            } else if (session?.user) {
+                // 管理者のアクセスを制限
+                if (session.user.email === 'testadmin@gmail.com') {
+                    router.push('/admin/dashboard');
+                    return;
+                }
+                setUser(session.user);
+                setLoading(false);
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+            isMounted = false;
+        };
+    }, [router]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadNFTData = async () => {
+            if (!user?.id) return;
+
+            try {
+                console.log('Loading NFT data for user:', user.email);
+                const data = await fetchNFTs(user.id);
+                
+                if (isMounted && data) {
+                    console.log('Setting NFT data for user:', user.email, data);
+                }
+            } catch (error) {
+                console.error('Error loading NFT data:', error);
+            }
+        };
+
+        loadNFTData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [user?.id]);
 
     const initializeDashboard = async () => {
         try {
@@ -61,56 +137,18 @@ export default function DashboardPage() {
                 router.push('/login')
                 return
             }
+
+            console.log('Current session user:', session.user);
             setUser(session.user)
 
-            // 承認済みの購入申請を取得
-            const { data: purchaseRequests, error: requestsError } = await supabase
-                .from('nft_purchase_requests')
-                .select(`
-                    id,
-                    nft_id,
-                    approved_at,
-                    nft_settings:nft_id (
-                        id,
-                        name,
-                        price,
-                        daily_rate,
-                        image_url
-                    )
-                `)
-                .eq('user_id', session.user.id)
-                .eq('status', 'approved')
+            // NFTデータを取得
+            const nftData = await fetchNFTs(session.user.id);
+            console.log('Initialized NFT data:', nftData);
 
-            if (requestsError) throw requestsError
-            setNfts(purchaseRequests || [])
-
-            // レベル情報の取得（カラム名を修正）
-            const { data: levelData, error: levelError } = await supabase
-                .from('user_levels')
-                .select(`
-                    id,
-                    level,
-                    max_line,
-                    other_lines,
-                    personal_investment
-                `)
-                .eq('id', session.user.id)  // user_idではなくidを使用
-                .single()
-
-            if (levelError) {
-                console.error('Level data error:', levelError)
-                // レベルデータが取得できない場合はデフォルト値を設定
-                setLevelInfo({
-                    maxLine: 0,
-                    otherLines: 0,
-                    personalInvestment: 0
-                })
-            } else {
-                setLevelInfo({
-                    maxLine: levelData.max_line || 0,
-                    otherLines: levelData.other_lines || 0,
-                    personalInvestment: levelData.personal_investment || 0
-                })
+            // レベル情報の取得
+            const levelInfo = await fetchUserLevelInfo(session.user.id);
+            if (levelInfo) {
+                setLevelInfo(levelInfo);
             }
 
             // ユーザーデータの取得
@@ -118,26 +156,27 @@ export default function DashboardPage() {
                 .from('profiles')
                 .select('*')
                 .eq('id', session.user.id)
-                .single()
+                .single();
 
-            if (userError) throw userError
-            setUserData(userData)
+            if (userError) throw userError;
+            setUserData(userData);
 
         } catch (error) {
-            console.error('Error initializing dashboard:', error)
-            setError('データの取得に失敗しました')
+            console.error('Error initializing dashboard:', error);
+            setError('データの取得に失敗しました');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
-    // 総投資額を計算する関数を追加
+    // 総投資額を計算する関数を修正
     const calculateTotalInvestment = (nfts: NFT[]): number => {
-        return nfts.reduce((total, purchase) => {
-            // nft_purchase_requestsのデータ構造に合わせて修正
-            return total + (purchase.price || 0)
-        }, 0)
-    }
+        if (!nfts) return 0;
+        return nfts.reduce((total, nft) => {
+            if (!nft) return total;
+            return total + (nft.price || 0);
+        }, 0);
+    };
 
     // レベル判定に必要な情報を取得する関数を修正
     const fetchUserLevelInfo = async (userId: string) => {
@@ -146,7 +185,7 @@ export default function DashboardPage() {
             const { data: purchases, error: purchasesError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    nfts (
+                    nft_settings!fk_nft_settings (
                         price
                     )
                 `)
@@ -156,7 +195,7 @@ export default function DashboardPage() {
             if (purchasesError) throw purchasesError
 
             const personalInvestment = purchases?.reduce((sum, purchase) => {
-                return sum + (purchase.nfts?.price || 0)
+                return sum + (purchase.nft_settings?.price || 0)
             }, 0) || 0
 
             // 直紹介の傘下の情報を取得
@@ -194,7 +233,7 @@ export default function DashboardPage() {
 
         // 直紹介の傘下の合計が1000ドル以上で足軽レベル
         if (maxLine >= 1000) return '足軽'
-        
+
         return '--'
     }
 
@@ -211,102 +250,104 @@ export default function DashboardPage() {
     const calculateBusinessDays = (startDate: Date, endDate: Date) => {
         let count = 0;
         const current = new Date(startDate);
-        
+
         while (current <= endDate) {
             const dayOfWeek = current.getDay();
             if (dayOfWeek !== 0 && dayOfWeek !== 6) count++; // 0=日曜, 6=土曜
             current.setDate(current.getDate() + 1);
         }
-        
+
         return count;
     };
 
-    // 複利を含めた報酬を計算する関数
-    const calculateCompoundRewards = (nftRequests: NFTPurchaseRequest[]) => {
-        console.log('Calculating compound rewards for NFTs:', JSON.stringify(nftRequests, null, 2));
-        const today = new Date();
+    // 日付をJST（日本時間）で表示する関数を追加
+    const formatDateToJST = (dateString: string | null): string => {
+        if (!dateString) return '-';
         
+        const date = new Date(dateString);
+        // UTCからJSTに変換（+9時間）
+        date.setHours(date.getHours() + 9);
+        
+        return date.toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo'
+        });
+    };
+
+    // 複利を含めた報酬を計算する関数を修正
+    const calculateCompoundRewards = (nftRequests: NFTPurchaseRequest[]) => {
+        if (!nftRequests || nftRequests.length === 0) return 0;
+        
+        const today = new Date();
+        today.setHours(today.getHours() + 9); // JSTに調整
+
         const totalRewards = nftRequests.reduce((total, request) => {
-            const nft = request.nfts;
-            if (!request.approved_at) {
-                console.log(`Skipping NFT ${nft?.name || 'Unknown'}: not approved`);
-                return total;
-            }
-            
+            if (!request.nft_price || !request.nft_daily_rate) return total;
+            if (!request.approved_at) return total;
+
             const startDate = new Date(request.approved_at);
-            let currentValue = nft.price;
-            let currentDate = new Date(startDate);
-            let weeklyLog = [];
+            startDate.setHours(startDate.getHours() + 9); // JSTに調整
             
+            let currentValue = request.nft_price;
+            let currentDate = new Date(startDate);
+
             console.log('Processing NFT:', {
-                name: nft.name,
-                price: nft.price,
-                dailyRate: nft.daily_rate,
+                name: request.nft_name,
+                price: request.nft_price,
+                dailyRate: request.nft_daily_rate,
                 startDate: startDate.toISOString(),
                 today: today.toISOString()
             });
-            
+
             // 週ごとに計算
             while (currentDate <= today) {
                 const endOfWeek = new Date(currentDate);
-                endOfWeek.setDate(endOfWeek.getDate() + 5); // 金曜日まで
-                
-                const weekStartValue = currentValue;
-                
-                // その週の営業日数を計算
+                endOfWeek.setDate(endOfWeek.getDate() + 5);
+
                 const weekBusinessDays = calculateBusinessDays(
                     currentDate,
                     endOfWeek > today ? today : endOfWeek
                 );
-                
-                // その週の報酬を計算（日利は%で保存）
+
                 for (let i = 0; i < weekBusinessDays; i++) {
-                    const dailyProfit = currentValue * nft.daily_rate;
+                    const dailyProfit = currentValue * (request.nft_daily_rate / 100);
                     currentValue += dailyProfit;
-                    console.log(`Day ${i + 1}: ${currentValue.toFixed(2)} (+${dailyProfit.toFixed(2)})`);
                 }
-                
-                weeklyLog.push({
-                    weekStart: currentDate.toLocaleDateString(),
-                    weekEnd: endOfWeek.toLocaleDateString(),
-                    startValue: weekStartValue,
-                    endValue: currentValue,
-                    businessDays: weekBusinessDays,
-                    profit: currentValue - weekStartValue
-                });
-                
+
                 currentDate.setDate(currentDate.getDate() + 7);
             }
-            
-            const profit = currentValue - nft.price;
-            console.log(`NFT ${nft.name} final calculation:`, {
-                initialValue: nft.price,
-                finalValue: currentValue,
-                profit: profit,
-                weeklyBreakdown: weeklyLog
-            });
-            
+
+            const profit = currentValue - request.nft_price;
             return total + profit;
         }, 0);
 
-        console.log('Total pending rewards:', totalRewards);
+        console.log('Total rewards calculated:', totalRewards);
         return totalRewards;
     };
 
-    // NFTデータを取得する部分を一箇所に統一
-    const fetchNFTs = async () => {
+    // NFTデータを取得する部分を修正
+    const fetchNFTs = async (userId?: string) => {
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
+            if (!userId) {
+                console.log('No user ID provided');
+                return [];
+            }
 
-            // まず承認済みの購入申請を取得
-            const { data: purchaseRequests, error: requestsError } = await supabase
+            console.log('Fetching NFTs for user:', userId);
+
+            // 購入リクエストとNFTデータを同時に取得
+            const { data: requests, error: requestError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
                     id,
+                    user_id,
                     nft_id,
+                    status,
+                    created_at,
                     approved_at,
-                    nft_settings:nft_id (
+                    nfts (
                         id,
                         name,
                         price,
@@ -314,16 +355,58 @@ export default function DashboardPage() {
                         image_url
                     )
                 `)
-                .eq('user_id', user.id)
-                .eq('status', 'approved')
+                .eq('user_id', userId)
+                .eq('status', 'approved');
 
-            if (requestsError) throw requestsError
-            setNfts(purchaseRequests || [])
+            if (requestError) {
+                console.error('Request fetch error:', requestError);
+                throw requestError;
+            }
 
+            console.log('Purchase requests:', requests);
+
+            // データを変換
+            const nftData = requests?.map(request => {
+                if (!request.nfts) {
+                    console.log(`No NFT data found for id: ${request.nft_id}`);
+                    return null;
+                }
+
+                return {
+                    id: request.nft_id,
+                    name: request.nfts.name,
+                    price: parseFloat(request.nfts.price),
+                    daily_rate: parseFloat(request.nfts.daily_rate || '1.0'),
+                    image_url: request.nfts.image_url,
+                    created_at: request.approved_at || request.created_at
+                };
+            }).filter(Boolean);
+
+            console.log('Processed NFT data:', nftData);
+
+            if (nftData && nftData.length > 0) {
+                setUserNFTs(nftData);
+                setRequests(requests);
+                console.log('NFT data set successfully:', nftData);
+            }
+
+            return nftData;
+        } catch (error: any) {
+            console.error('Error fetching NFTs:', error);
+            setError('NFTの取得に失敗しました');
+            return [];
+        }
+    };
+
+    // ログアウト処理を修正
+    const handleLogout = async () => {
+        try {
+            await supabase.auth.signOut();
+            setUser(null);
+            setUserNFTs([]);
+            router.push('/login');
         } catch (error) {
-            console.error('Error fetching NFTs:', error)
-        } finally {
-            setLoading(false)
+            console.error('Error logging out:', error);
         }
     };
 
@@ -349,7 +432,7 @@ export default function DashboardPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header user={user} onLogout={handleLogout} />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-7xl mx-auto">
                     <h1 className="text-3xl font-bold text-white mb-8">ダッシュボード</h1>
@@ -420,7 +503,7 @@ export default function DashboardPage() {
 
                     {/* アクションボタン */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <Link href="/nfts/purchase" 
+                        <Link href="/nfts/purchase"
                             className="group bg-emerald-600 p-4 rounded-lg hover:bg-emerald-700 transition-colors relative overflow-hidden"
                         >
                             <div className="flex items-start space-x-3">
@@ -500,34 +583,21 @@ export default function DashboardPage() {
                         <h2 className="text-xl font-bold text-white mb-6">所有NFT一覧</h2>
                         {loading ? (
                             <div className="text-center text-gray-400">読み込み中...</div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                                {nfts.map((nft) => (
+                        ) : userNFTs && userNFTs.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                                {userNFTs.map((nft) => (
                                     <div key={nft.id} className="bg-gray-700 rounded-lg overflow-hidden">
-                                        <div className="w-3/4 mx-auto">
-                                            <img
-                                                src={nft.nft_settings?.image_url || '/images/nft-placeholder.png'}
-                                                alt={nft.nft_settings?.name}
-                                                className="w-full aspect-square object-cover rounded-lg shadow-lg"
-                                            />
-                                        </div>
-                                        <div className="p-4">
-                                            <h3 className="font-bold text-white text-lg mb-2">
-                                                {nft.nft_settings?.name}
-                                            </h3>
-                                            <p className="text-gray-300">
-                                                価格: ${nft.nft_settings?.price?.toLocaleString()}
-                                            </p>
-                                            <p className="text-gray-300">
-                                                日利: {(nft.nft_settings?.daily_rate || 0) * 100}%
-                                            </p>
-                                            <p className="text-gray-400 text-sm">
-                                                購入日: {new Date(nft.approved_at).toLocaleDateString('ja-JP')}
-                                            </p>
-                                        </div>
+                                        <NFTCard 
+                                            nft={{
+                                                ...nft,
+                                                created_at: formatDateToJST(nft.created_at)
+                                            }} 
+                                        />
                                     </div>
                                 ))}
                             </div>
+                        ) : (
+                            <div className="text-center text-gray-400">NFTを所有していません</div>
                         )}
                     </div>
                 </div>
