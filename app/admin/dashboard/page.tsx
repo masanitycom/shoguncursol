@@ -91,7 +91,18 @@ export default function AdminDashboardPage() {
 
             if (usersError) throw usersError
 
-            // NFT購入情報のクエリを修正（nft_master → nfts）
+            // 保留中の購入申請数を取得
+            const { data: pendingPurchases, error: pendingError } = await supabase
+                .from('nft_purchase_requests')
+                .select('id')
+                .eq('status', 'pending')
+
+            if (pendingError) throw pendingError
+
+            // エアドロップ申請を取得
+            const airdrops = await fetchAirdrops()
+
+            // 投資額の計算など、他の統計情報を取得
             const { data: nftPurchases, error: purchasesError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
@@ -105,69 +116,21 @@ export default function AdminDashboardPage() {
                         name,
                         price
                     )
-                `) as { data: PurchaseRequest[] | null, error: any }
+                `)
 
-            if (purchasesError) {
-                console.error('NFT Purchases Error:', purchasesError)
-                throw purchasesError
-            }
+            if (purchasesError) throw purchasesError
 
-            console.log('Raw NFT Purchases:', nftPurchases)
-            console.log('Purchase Count:', nftPurchases?.length || 0)
-            
-            // 型アサーションを追加してクエリ結果の型を明示
-            if (nftPurchases && nftPurchases.length > 0) {
-                nftPurchases.forEach((purchase: PurchaseRequest) => {
-                    console.log('Purchase Detail:', {
-                        purchaseId: purchase.id,
-                        userId: purchase.user_id,
-                        nftMasterId: purchase.nft_id,
-                        price: purchase.nfts?.price,
-                        status: purchase.status
-                    })
-                })
-            }
+            const totalInvestment = calculateTotalInvestment(nftPurchases)
 
-            // ユーザーごとの投資額計算
-            const userInvestments = nftPurchases?.reduce((acc, purchase) => {
-                const userId = purchase.user_id
-                const price = purchase.nfts?.price
-                console.log(`Processing purchase for user ${userId} with price ${price}`)
-                
-                if (price) {
-                    acc[userId] = (acc[userId] || 0) + Number(price)
-                    console.log(`Updated investment for user ${userId} to ${acc[userId]}`)
-                }
-                return acc
-            }, {} as Record<string, number>) || {}
-
-            console.log('Final User Investments:', userInvestments)
-
-            const totalInvestment = Object.values(userInvestments).reduce((sum, amount) => {
-                console.log(`Adding amount ${amount} to sum ${sum}`)
-                return sum + amount
-            }, 0)
-
-            console.log('Final Total Investment:', totalInvestment)
-
+            // 統計情報を更新
             setStats({
                 totalUsers: users?.length || 0,
                 activeUsers: users?.filter(u => u.active).length || 0,
-                totalInvestment: totalInvestment || 0,
+                totalInvestment: totalInvestment,
                 monthlyRevenue: 0,
-                pendingPurchases: 0,
-                pendingAirdrops: 0
-            })
-
-            // 保留中の申請も同様に修正
-            await fetchPendingPurchases()
-            const airdrops = await fetchAirdrops()
-
-            setStats(prev => ({
-                ...prev,
-                pendingPurchases: pendingPurchases.length,
+                pendingPurchases: pendingPurchases?.length || 0,  // 保留中の申請数を設定
                 pendingAirdrops: airdrops.length
-            }))
+            })
 
         } catch (error) {
             console.error('Error fetching stats:', error)
@@ -219,6 +182,29 @@ export default function AdminDashboardPage() {
             console.error('Error fetching airdrops:', error)
             return []
         }
+    }
+
+    const calculateTotalInvestment = (nftPurchases: PurchaseRequest[] | null) => {
+        if (!nftPurchases || nftPurchases.length === 0) return 0
+
+        const userInvestments = nftPurchases.reduce((acc, purchase) => {
+            const userId = purchase.user_id
+            const price = purchase.nfts?.price
+            console.log(`Processing purchase for user ${userId} with price ${price}`)
+            
+            if (price) {
+                acc[userId] = (acc[userId] || 0) + Number(price)
+                console.log(`Updated investment for user ${userId} to ${acc[userId]}`)
+            }
+            return acc
+        }, {} as Record<string, number>) || {}
+
+        console.log('Final User Investments:', userInvestments)
+
+        return Object.values(userInvestments).reduce((sum, amount) => {
+            console.log(`Adding amount ${amount} to sum ${sum}`)
+            return sum + amount
+        }, 0)
     }
 
     if (!user) return null
