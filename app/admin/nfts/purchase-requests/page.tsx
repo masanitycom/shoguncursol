@@ -23,7 +23,7 @@ interface PurchaseRequest {
     id: string;
     user_id: string;
     nft_id: string;
-    status: 'pending' | 'approved' | 'rejected' | 'deactivated';
+    status: string;
     created_at: string;
     approved_at: string | null;
     nft_name: string;
@@ -32,6 +32,17 @@ interface PurchaseRequest {
     nft_image_url: string | null;
     user_email: string;
     user_display_name: string | null;
+    nfts?: {
+        id: string;
+        name: string;
+        price: number;
+        daily_rate: number;
+        image_url: string | null;
+    };
+    users?: {
+        id: string;
+        name: string;
+    };
 }
 
 export default function PurchaseRequestsPage() {
@@ -73,25 +84,59 @@ export default function PurchaseRequestsPage() {
 
     const fetchRequests = async () => {
         try {
-            const { data, error } = await supabase
-                .from('purchase_requests_view')
-                .select('*')
-                .order('created_at', { ascending: false })
+            // まず購入リクエストとNFT情報を取得
+            const { data: requests, error } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    *,
+                    nfts:nft_settings (
+                        id,
+                        name,
+                        price,
+                        daily_rate,
+                        image_url
+                    )
+                `)
+                .order('created_at', { ascending: false });
 
-            if (error) throw error
-            console.log('Fetched requests:', data)
-            
-            // データを変換
-            const formattedRequests = data?.map(request => formatRequest(request)) || []
-            setRequests(formattedRequests)
-            setFilteredRequests(formattedRequests)
+            if (error) throw error;
+
+            // 次にプロフィール情報を別途取得
+            const userIds = requests?.map(req => req.user_id) || [];
+            const { data: profiles, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .in('id', userIds);
+
+            if (profileError) throw profileError;
+
+            // データを結合して整形
+            const formattedRequests = requests?.map(request => {
+                const profile = profiles?.find(p => p.id === request.user_id);
+                return {
+                    id: request.id,
+                    user_id: request.user_id,
+                    status: request.status,
+                    created_at: request.created_at,
+                    approved_at: request.approved_at,
+                    nft_id: request.nft_id,
+                    nft_name: request.nfts?.name || 'Unknown NFT',
+                    nft_price: request.nfts?.price || 0,
+                    nft_daily_rate: request.nfts?.daily_rate || 0,
+                    nft_image_url: request.nfts?.image_url,
+                    user_display_name: profile?.name || 'Unknown Name'
+                };
+            }) || [];
+
+            setRequests(formattedRequests);
+            setFilteredRequests(formattedRequests);
         } catch (error: any) {
-            console.error('Error fetching requests:', error)
-            setError('リクエストの取得に失敗しました')
+            console.error('Error fetching requests:', error);
+            setError('リクエストの取得に失敗しました');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     // 検索フィルター関数
     useEffect(() => {
@@ -106,7 +151,7 @@ export default function PurchaseRequestsPage() {
         if (searchTerm) {
             const searchTermUpper = searchTerm.toUpperCase();
             filtered = filtered.filter(request => 
-                request.user_email?.toUpperCase().includes(searchTermUpper) ||
+                request.user_display_name?.toUpperCase().includes(searchTermUpper) ||
                 request.nft_name?.toUpperCase().includes(searchTermUpper)
             );
         }
@@ -313,12 +358,11 @@ export default function PurchaseRequestsPage() {
         created_at: request.created_at,
         approved_at: request.approved_at,
         nft_id: request.nft_id,
-        nft_name: request.nft_name,
-        nft_price: request.nft_price,
-        nft_daily_rate: request.nft_daily_rate,
-        nft_image_url: request.nft_image_url,
-        user_email: request.user_email,
-        user_display_name: request.user_display_name
+        nft_name: request.nfts?.name || 'Unknown NFT',
+        nft_price: request.nfts?.price || 0,
+        nft_daily_rate: request.nfts?.daily_rate || 0,
+        nft_image_url: request.nfts?.image_url,
+        user_display_name: request.users?.name || 'Unknown Name'
     })
 
     // 統計情報を取得する関数を修正
@@ -524,8 +568,12 @@ export default function PurchaseRequestsPage() {
                                         <tr key={request.id} className="bg-gray-700">
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium">{request.user_display_name || request.user_email || 'Unknown'}</span>
-                                                    <span className="text-xs text-gray-400">{request.user_email}</span>
+                                                    <span className="font-medium">
+                                                        {request.user_display_name}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">
+                                                        ID: {request.user_id.substring(0, 8)}...
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">

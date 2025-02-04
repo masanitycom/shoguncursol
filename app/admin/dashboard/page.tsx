@@ -84,7 +84,7 @@ export default function AdminDashboardPage() {
 
     const fetchDashboardStats = async () => {
         try {
-            // ユーザー情報の取得
+            // ユーザー情報の取得（アクティブフラグを確認）
             const { data: users, error: usersError } = await supabase
                 .from('users')
                 .select('*')
@@ -95,14 +95,11 @@ export default function AdminDashboardPage() {
             const { data: pendingPurchases, error: pendingError } = await supabase
                 .from('nft_purchase_requests')
                 .select('id')
-                .eq('status', 'pending')
+                .eq('status', 'pending')  // statusが'pending'のものを取得
 
             if (pendingError) throw pendingError
 
-            // エアドロップ申請を取得
-            const airdrops = await fetchAirdrops()
-
-            // 投資額の計算など、他の統計情報を取得
+            // 投資額の計算（承認済みの購入のみ）
             const { data: nftPurchases, error: purchasesError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
@@ -111,12 +108,13 @@ export default function AdminDashboardPage() {
                     nft_id,
                     status,
                     created_at,
-                    nfts!inner (
+                    nfts:nft_settings!inner (
                         id,
                         name,
                         price
                     )
                 `)
+                .eq('status', 'approved')  // 承認済みのみを対象に
 
             if (purchasesError) throw purchasesError
 
@@ -128,8 +126,8 @@ export default function AdminDashboardPage() {
                 activeUsers: users?.filter(u => u.active).length || 0,
                 totalInvestment: totalInvestment,
                 monthlyRevenue: 0,
-                pendingPurchases: pendingPurchases?.length || 0,  // 保留中の申請数を設定
-                pendingAirdrops: airdrops.length
+                pendingPurchases: pendingPurchases?.length || 0,
+                pendingAirdrops: 0  // エアドロップ機能は後で実装
             })
 
         } catch (error) {
@@ -248,7 +246,7 @@ export default function AdminDashboardPage() {
                             icon={ChartBarIcon}
                         />
                         <StatCard
-                            title="保留中のNFT購入"
+                            title="NFT購入申請"
                             value={stats.pendingPurchases}
                             loading={loading}
                             suffix="件"
