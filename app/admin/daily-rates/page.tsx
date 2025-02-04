@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
-import Header from '../../../components/Header'
-import AdminSidebar from '../../../components/AdminSidebar'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import AdminSidebar from '@/components/AdminSidebar'
+import { useAuth } from '@/lib/auth'
 
 interface NFT {
     id: string
@@ -26,6 +27,7 @@ interface BulkSettings {
 
 export default function DailyRatesPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [nfts, setNfts] = useState<NFT[]>([])
     const [selectedWeek, setSelectedWeek] = useState<string>(getMonday(new Date()))
@@ -259,7 +261,11 @@ export default function DailyRatesPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">

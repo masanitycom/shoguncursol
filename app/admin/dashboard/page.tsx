@@ -14,11 +14,17 @@ import {
     ShoppingCartIcon,
     GiftIcon
 } from '@heroicons/react/24/outline'
+import { useAuth } from '@/lib/auth'
 
-interface NFT {
+interface NFTSettings {
     id: string;
     name: string;
     price: number;
+    daily_rate: number;
+    image_url: string | null;
+    owner_id: string | null;
+    status: string | null;
+    description: string | null;
 }
 
 interface PurchaseRequest {
@@ -27,7 +33,9 @@ interface PurchaseRequest {
     nft_id: string;
     status: string;
     created_at: string;
-    nfts: NFT | null;  // nullableな単一のNFTオブジェクト
+    approved_at: string | null;
+    payment_method: string;
+    nfts: NFTSettings[];  // 配列として定義
 }
 
 interface DashboardStats {
@@ -56,6 +64,7 @@ interface NFTPurchaseRequest {
 
 export default function AdminDashboardPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [stats, setStats] = useState<DashboardStats>({
         totalUsers: 0,
@@ -108,17 +117,26 @@ export default function AdminDashboardPage() {
                     nft_id,
                     status,
                     created_at,
+                    approved_at,
+                    payment_method,
                     nfts:nft_settings!inner (
                         id,
                         name,
-                        price
+                        price,
+                        daily_rate,
+                        image_url,
+                        owner_id,
+                        status,
+                        description
                     )
                 `)
-                .eq('status', 'approved')  // 承認済みのみを対象に
+                .eq('status', 'approved')
 
             if (purchasesError) throw purchasesError
 
-            const totalInvestment = calculateTotalInvestment(nftPurchases)
+            // 型アサーション
+            const typedPurchases = nftPurchases as PurchaseRequest[];
+            const totalInvestment = calculateTotalInvestment(typedPurchases);
 
             // 統計情報を更新
             setStats({
@@ -182,34 +200,23 @@ export default function AdminDashboardPage() {
         }
     }
 
-    const calculateTotalInvestment = (nftPurchases: PurchaseRequest[] | null) => {
-        if (!nftPurchases || nftPurchases.length === 0) return 0
-
-        const userInvestments = nftPurchases.reduce((acc, purchase) => {
-            const userId = purchase.user_id
-            const price = purchase.nfts?.price
-            console.log(`Processing purchase for user ${userId} with price ${price}`)
-            
-            if (price) {
-                acc[userId] = (acc[userId] || 0) + Number(price)
-                console.log(`Updated investment for user ${userId} to ${acc[userId]}`)
-            }
-            return acc
-        }, {} as Record<string, number>) || {}
-
-        console.log('Final User Investments:', userInvestments)
-
-        return Object.values(userInvestments).reduce((sum, amount) => {
-            console.log(`Adding amount ${amount} to sum ${sum}`)
-            return sum + amount
-        }, 0)
+    const calculateTotalInvestment = (purchases: PurchaseRequest[] | null) => {
+        if (!purchases || purchases.length === 0) return 0;
+        return purchases.reduce((total, purchase) => {
+            const price = purchase.nfts[0]?.price;  // 配列の最初の要素を使用
+            return total + (price || 0);
+        }, 0);
     }
 
     if (!user) return null
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 p-8">

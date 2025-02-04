@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { Dialog } from '@headlessui/react'
 import Header from '@/components/Header'
+import { useAuth } from '@/lib/auth'
 
 interface UserProfile {
     id: string
@@ -16,6 +17,8 @@ interface UserProfile {
 }
 
 export default function ProfilePage() {
+    const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<UserProfile | null>(null)
     const [isEditing, setIsEditing] = useState(false)
     const [editForm, setEditForm] = useState({
@@ -32,22 +35,14 @@ export default function ProfilePage() {
     })
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
-    const router = useRouter()
     const [isQRModalOpen, setIsQRModalOpen] = useState(false)
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetchUserProfile()
+        checkAuth()
+    }, [])
 
-        const interval = setInterval(() => {
-            if (user?.id) {
-                fetchUserProfile()
-            }
-        }, 2000)
-
-        return () => clearInterval(interval)
-    }, [user?.id])
-
-    const fetchUserProfile = async () => {
+    const checkAuth = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) {
@@ -55,26 +50,43 @@ export default function ProfilePage() {
                 return
             }
 
-            const { data, error } = await supabase
-                .from('users')
+            // 管理者のアクセスを制限
+            if (session.user.email === 'testadmin@gmail.com') {
+                router.push('/admin/dashboard')
+                return
+            }
+
+            const { data: profile, error } = await supabase
+                .from('profiles')
                 .select('*')
                 .eq('id', session.user.id)
                 .single()
 
-            if (error) throw error
-            if (data) {
-                if (JSON.stringify(data) !== JSON.stringify(user)) {
-                    setUser(data)
-                    setEditForm({
-                        name: data.name || '',
-                        email: data.email || '',
-                        wallet_address: data.wallet_address || '',
-                        wallet_type: data.wallet_type || 'EVOカード'
-                    })
-                }
+            if (error && error.code !== 'PGRST116') {
+                console.error('Error fetching profile:', error)
+                return
             }
+
+            const userData: UserProfile = {
+                id: session.user.id,
+                email: session.user.email || '',
+                name: profile?.name || null,
+                wallet_type: profile?.wallet_type || null,
+                wallet_address: profile?.wallet_address || null
+            }
+
+            setUser(userData)
+            setEditForm({
+                name: userData.name || '',
+                email: userData.email || '',
+                wallet_address: userData.wallet_address || '',
+                wallet_type: userData.wallet_type || 'EVOカード'
+            })
         } catch (error) {
-            console.error('Error fetching profile:', error)
+            console.error('Error checking auth:', error)
+            setError('認証エラーが発生しました')
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -94,7 +106,7 @@ export default function ProfilePage() {
 
             // プロフィール情報の更新
             const { error: profileError } = await supabase
-                .from('users')
+                .from('profiles')
                 .update({
                     name: editForm.name,
                     email: editForm.email,
@@ -106,7 +118,7 @@ export default function ProfilePage() {
             if (profileError) throw profileError
 
             setSuccess('プロフィールを更新しました')
-            fetchUserProfile()
+            checkAuth()
             setIsEditing(false)
         } catch (error: any) {
             console.error('Update error:', error)
@@ -157,9 +169,22 @@ export default function ProfilePage() {
         window.open(url, '_blank')
     }
 
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <div className="text-white">Loading...</div>
+            </div>
+        )
+    }
+
+    if (!user) return null
+
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-4xl mx-auto px-4 py-8">
                     <div className="bg-gray-800 rounded-lg shadow-lg p-6">

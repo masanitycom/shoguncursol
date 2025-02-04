@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
+import { useAuth } from '@/lib/auth'
 
-interface NFT {
-    id: string;
-    name: string;
-    price: number;
+interface NFTMaster {
+    id: string
+    name: string
+    price: number
+    daily_rate: number
+    image_url: string | null
 }
 
 interface User {
@@ -19,34 +22,58 @@ interface User {
     wallet_address: string;
 }
 
-interface PurchaseRequest {
+interface Profile {
+    id: string
+    name: string | null
+    email: string | null
+}
+
+interface RawPurchaseRequest {
     id: string;
     user_id: string;
     nft_id: string;
     status: string;
     created_at: string;
     approved_at: string | null;
-    nft_name: string;
-    nft_price: number;
-    nft_daily_rate: number;
-    nft_image_url: string | null;
-    user_email: string;
-    user_display_name: string | null;
-    nfts?: {
+    payment_method: string;
+    nfts: {
         id: string;
         name: string;
         price: number;
         daily_rate: number;
         image_url: string | null;
-    };
-    users?: {
-        id: string;
-        name: string;
-    };
+    }[];
+}
+
+interface NFTSetting {
+    id: string;
+    name: string;
+    price: number;
+    daily_rate: number;
+    image_url: string | null;
+    status: string | null;
+    owner_id: string | null;
+    description: string | null;
+}
+
+interface PurchaseRequest {
+    id: string
+    user_id: string
+    nft_id: string
+    status: string
+    created_at: string
+    approved_at: string | null
+    payment_method: string
+    nft_name: string
+    nft_price: number
+    nft_daily_rate: number
+    nft_image_url: string | null
+    user_display_name?: string
 }
 
 export default function PurchaseRequestsPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [requests, setRequests] = useState<PurchaseRequest[]>([])
     const [loading, setLoading] = useState(true)
@@ -84,12 +111,11 @@ export default function PurchaseRequestsPage() {
 
     const fetchRequests = async () => {
         try {
-            // まず購入リクエストとNFT情報を取得
-            const { data: requests, error } = await supabase
+            const { data, error } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
                     *,
-                    nfts:nft_settings (
+                    nft:nft_master (
                         id,
                         name,
                         price,
@@ -97,46 +123,33 @@ export default function PurchaseRequestsPage() {
                         image_url
                     )
                 `)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
 
-            if (error) throw error;
+            if (error) throw error
 
-            // 次にプロフィール情報を別途取得
-            const userIds = requests?.map(req => req.user_id) || [];
-            const { data: profiles, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .in('id', userIds);
+            // 型を修正して変換
+            const formattedRequests = (data || []).map(request => ({
+                id: request.id,
+                user_id: request.user_id,
+                nft_id: request.nft_id,
+                status: request.status,
+                created_at: request.created_at,
+                approved_at: request.approved_at,
+                payment_method: request.payment_method,
+                nft_name: request.nft?.name || 'Unknown NFT',
+                nft_price: Number(request.nft?.price) || 0,
+                nft_daily_rate: Number(request.nft?.daily_rate) || 0,
+                nft_image_url: request.nft?.image_url
+            })) as PurchaseRequest[]  // 型アサーションを追加
 
-            if (profileError) throw profileError;
-
-            // データを結合して整形
-            const formattedRequests = requests?.map(request => {
-                const profile = profiles?.find(p => p.id === request.user_id);
-                return {
-                    id: request.id,
-                    user_id: request.user_id,
-                    status: request.status,
-                    created_at: request.created_at,
-                    approved_at: request.approved_at,
-                    nft_id: request.nft_id,
-                    nft_name: request.nfts?.name || 'Unknown NFT',
-                    nft_price: request.nfts?.price || 0,
-                    nft_daily_rate: request.nfts?.daily_rate || 0,
-                    nft_image_url: request.nfts?.image_url,
-                    user_display_name: profile?.name || 'Unknown Name'
-                };
-            }) || [];
-
-            setRequests(formattedRequests);
-            setFilteredRequests(formattedRequests);
+            setRequests(formattedRequests)
         } catch (error: any) {
-            console.error('Error fetching requests:', error);
-            setError('リクエストの取得に失敗しました');
+            console.error('Error fetching requests:', error)
+            setError(error.message)
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     // 検索フィルター関数
     useEffect(() => {
@@ -151,7 +164,6 @@ export default function PurchaseRequestsPage() {
         if (searchTerm) {
             const searchTermUpper = searchTerm.toUpperCase();
             filtered = filtered.filter(request => 
-                request.user_display_name?.toUpperCase().includes(searchTermUpper) ||
                 request.nft_name?.toUpperCase().includes(searchTermUpper)
             );
         }
@@ -207,32 +219,33 @@ export default function PurchaseRequestsPage() {
     // ユーザーの投資額を再計算する関数を追加
     const recalculateUserInvestment = async (userId: string) => {
         try {
-            console.log('Recalculating investment for user:', userId)
+            console.log('Recalculating investment for user:', userId);
 
             // 1. ユーザーの承認済み購入履歴をすべて取得
             const { data: purchases, error: purchasesError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    nfts (
+                    *,
+                    nfts:nft_settings (
                         id,
                         name,
                         price
                     )
                 `)
                 .eq('user_id', userId)
-                .eq('status', 'approved')
+                .eq('status', 'approved');
 
-            if (purchasesError) throw purchasesError
-            console.log('Found approved purchases:', purchases)
+            if (purchasesError) throw purchasesError;
+            console.log('Found approved purchases:', purchases);
 
             // 2. 総投資額を計算
             const totalInvestment = purchases?.reduce((sum, purchase) => {
-                const price = purchase.nfts?.price || 0
-                console.log(`Adding NFT price: ${price} to sum: ${sum}`)
-                return sum + price
-            }, 0) || 0
+                const price = purchase.nfts?.[0]?.price || 0;
+                console.log(`Adding NFT price: ${price} to sum: ${sum}`);
+                return sum + Number(price);
+            }, 0) || 0;
 
-            console.log('Calculated total investment:', totalInvestment)
+            console.log('Calculated total investment:', totalInvestment);
 
             // 3. ユーザーの投資額を更新
             const { error: updateError } = await supabase
@@ -241,32 +254,16 @@ export default function PurchaseRequestsPage() {
                     investment_amount: totalInvestment,
                     updated_at: new Date().toISOString()
                 })
-                .eq('id', userId)
+                .eq('id', userId);
 
-            if (updateError) {
-                console.error('Error updating user investment:', updateError)
-                throw updateError
-            }
+            if (updateError) throw updateError;
 
-            // 4. 更新後の値を確認
-            const { data: updatedUser, error: checkError } = await supabase
-                .from('users')
-                .select('investment_amount')
-                .eq('id', userId)
-                .single()
-
-            if (checkError) {
-                console.error('Error checking updated value:', checkError)
-            } else {
-                console.log('Updated investment amount confirmed:', updatedUser?.investment_amount)
-            }
-
-            return totalInvestment
+            return totalInvestment;
         } catch (error) {
-            console.error('Error recalculating investment:', error)
-            throw error
+            console.error('Error recalculating investment:', error);
+            throw error;
         }
-    }
+    };
 
     const handleSave = async (updatedRequest: PurchaseRequest) => {
         try {
@@ -351,41 +348,54 @@ export default function PurchaseRequestsPage() {
         }
     }
 
-    const formatRequest = (request: any): PurchaseRequest => ({
-        id: request.id,
-        user_id: request.user_id,
-        status: request.status,
-        created_at: request.created_at,
-        approved_at: request.approved_at,
-        nft_id: request.nft_id,
-        nft_name: request.nfts?.name || 'Unknown NFT',
-        nft_price: request.nfts?.price || 0,
-        nft_daily_rate: request.nfts?.daily_rate || 0,
-        nft_image_url: request.nfts?.image_url,
-        user_display_name: request.users?.name || 'Unknown Name'
-    })
+    const formatRequest = (request: any): PurchaseRequest => {
+        const formatted: PurchaseRequest = {
+            id: request.id,
+            user_id: request.user_id,
+            nft_id: request.nft_id,
+            status: request.status,
+            created_at: request.created_at,
+            approved_at: request.approved_at,
+            payment_method: request.payment_method || 'bank_transfer',
+            nft_name: request.nfts?.name || 'Unknown NFT',
+            nft_price: request.nfts?.price || 0,
+            nft_daily_rate: request.nfts?.daily_rate || 0,
+            nft_image_url: request.nfts?.image_url
+        }
+
+        // オプショナルなプロパティを追加
+        if (request.profiles) {
+            formatted.user_display_name = request.profiles?.name || request.profiles?.email || 'Unknown User'
+        }
+
+        return formatted
+    }
 
     // 統計情報を取得する関数を修正
     const fetchStats = async () => {
         try {
-            const { data: stats, error } = await supabase
+            const { data: purchases, error } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
                     status,
-                    nft_settings!nft_id (
-                        price
+                    nfts:nft_settings (
+                        id,
+                        name,
+                        price,
+                        daily_rate,
+                        image_url
                     )
                 `);
 
             if (error) throw error;
 
-            const summary = stats.reduce((acc, curr) => {
-                if (curr.nft_settings) {
-                    const price = Number(curr.nft_settings.price);
-                    acc.totalValue += price;
-                    if (curr.status === 'approved') {
-                        acc.approvedValue += price;
-                    }
+            // 型アサーション
+            const typedPurchases = purchases as RawPurchaseRequest[];
+            const summary = typedPurchases.reduce((acc, curr) => {
+                const price = curr.nfts[0]?.price || 0;
+                acc.totalValue += price;
+                if (curr.status === 'approved') {
+                    acc.approvedValue += price;
                 }
                 return acc;
             }, { totalValue: 0, approvedValue: 0 });
@@ -478,7 +488,11 @@ export default function PurchaseRequestsPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">
@@ -541,9 +555,6 @@ export default function PurchaseRequestsPage() {
                                 <thead className="bg-gray-800">
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                            ユーザー
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                                             NFT
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -566,16 +577,6 @@ export default function PurchaseRequestsPage() {
                                 <tbody className="divide-y divide-gray-700">
                                     {filteredRequests.map((request) => (
                                         <tr key={request.id} className="bg-gray-700">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium">
-                                                        {request.user_display_name}
-                                                    </span>
-                                                    <span className="text-xs text-gray-400">
-                                                        ID: {request.user_id.substring(0, 8)}...
-                                                    </span>
-                                                </div>
-                                            </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <div className="text-sm text-gray-300">{request.nft_name || 'Unknown NFT'}</div>
                                             </td>
@@ -701,14 +702,20 @@ function EditRequestModal({ request, onClose, onSave, onUpdateDates, editDates, 
         status: request.status,
         nft_id: request.nft_id
     })
-    const [availableNFTs, setAvailableNFTs] = useState<NFT[]>([])
+    const [availableNFTs, setAvailableNFTs] = useState<NFTMaster[]>([])
 
     // 利用可能なNFTを取得
     useEffect(() => {
         const fetchNFTs = async () => {
             const { data: nfts, error } = await supabase
-                .from('nfts')
-                .select('id, name, price')
+                .from('nft_master')  // nft_masterテーブルから取得
+                .select(`
+                    id,
+                    name,
+                    price,
+                    daily_rate,
+                    image_url
+                `)
                 .order('name')
 
             if (error) {
@@ -716,7 +723,16 @@ function EditRequestModal({ request, onClose, onSave, onUpdateDates, editDates, 
                 return
             }
 
-            setAvailableNFTs(nfts || [])
+            // 型アサーションを使用して安全に変換
+            const formattedNFTs = (nfts || []).map(nft => ({
+                id: nft.id,
+                name: nft.name,
+                price: nft.price,
+                daily_rate: nft.daily_rate,
+                image_url: nft.image_url
+            })) as NFTMaster[]
+
+            setAvailableNFTs(formattedNFTs)
         }
 
         fetchNFTs()

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
-import Header from '../../../components/Header'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import { useAuth } from '@/lib/auth'
 
 interface RewardRequestForm {
     amount: number
@@ -11,9 +12,17 @@ interface RewardRequestForm {
     wallet_type: 'EVO' | 'その他'
 }
 
+interface UserProfile {
+    id: string
+    wallet_address: string
+    wallet_type: string
+}
+
 export default function RewardRequestPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
+    const [profile, setProfile] = useState<UserProfile | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [formData, setFormData] = useState<RewardRequestForm>({
@@ -89,7 +98,10 @@ export default function RewardRequestPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-lg mx-auto">
                     <h1 className="text-3xl font-bold text-white mb-8">報酬申請</h1>

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
-import Header from '../../../components/Header'
-import AdminSidebar from '../../../components/AdminSidebar'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import AdminSidebar from '@/components/AdminSidebar'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { useAuth } from '@/lib/auth'
 
 interface NFT {
     id: string
@@ -18,6 +19,7 @@ interface NFT {
 
 export default function NFTManagementPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [nfts, setNfts] = useState<NFT[]>([])
     const [loading, setLoading] = useState(true)
@@ -75,7 +77,11 @@ export default function NFTManagementPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">

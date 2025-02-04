@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
-import Header from '../../components/Header'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import { useAuth } from '@/lib/auth'
 
 interface Member {
     id: string
@@ -14,11 +15,23 @@ interface Member {
     level: number
 }
 
+interface OrganizationMember {
+    id: string
+    name: string
+    email: string
+    level: number
+    referrer_id: string | null
+    investment_amount: number
+}
+
 export default function OrganizationPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [organization, setOrganization] = useState<Member | null>(null)
+    const [members, setMembers] = useState<OrganizationMember[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         checkAuth()
@@ -30,6 +43,12 @@ export default function OrganizationPage() {
             router.push('/login')
             return
         }
+
+        if (session.user.email === 'testadmin@gmail.com') {
+            router.push('/admin/dashboard')
+            return
+        }
+
         setUser(session.user)
         await fetchOrganization(session.user.id)
     }
@@ -128,7 +147,10 @@ export default function OrganizationPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold text-white mb-8">組織図</h1>
                 

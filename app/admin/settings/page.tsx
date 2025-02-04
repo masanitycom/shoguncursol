@@ -1,19 +1,34 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../../../lib/supabase'
-import AdminSidebar from '../../../components/AdminSidebar'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
+import AdminSidebar from '@/components/AdminSidebar'
+import { useAuth } from '@/lib/auth'
 
 export default function AdminSettingsPage() {
+    const router = useRouter()
+    const { handleLogout } = useAuth()
+    const [user, setUser] = useState<any>(null)
     const [paymentMessage, setPaymentMessage] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
 
     useEffect(() => {
+        checkAuth()
         fetchSettings()
     }, [])
+
+    const checkAuth = async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
+            router.push('/admin/login')
+            return
+        }
+        setUser(session.user)
+    }
 
     const fetchSettings = async () => {
         try {
@@ -55,9 +70,15 @@ export default function AdminSettingsPage() {
         }
     }
 
+    if (!user) return null
+
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={null} isAdmin={true} />
+            <Header 
+                user={user}
+                isAdmin={true}
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 p-8">

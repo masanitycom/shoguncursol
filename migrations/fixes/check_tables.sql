@@ -49,4 +49,34 @@ FROM auth.users
 ON CONFLICT (id) DO UPDATE
 SET 
     email = EXCLUDED.email,
-    display_name = EXCLUDED.display_name; 
+    display_name = EXCLUDED.display_name;
+
+-- NFT購入リクエストとNFT設定の関連を確認
+SELECT 
+    npr.id as request_id,
+    npr.user_id,
+    npr.nft_id,
+    npr.status,
+    npr.created_at,
+    npr.approved_at,
+    ns.id as nft_settings_id,
+    ns.name,
+    ns.price,
+    ns.daily_rate
+FROM nft_purchase_requests npr
+LEFT JOIN nft_settings ns ON npr.nft_id = ns.id
+WHERE npr.status = 'approved'
+LIMIT 5;
+
+-- user_nftsテーブルの構造と内容を確認
+SELECT 
+    un.id,
+    un.user_id,
+    un.nft_type_id,
+    un.is_active,
+    ns.name,
+    ns.price,
+    ns.daily_rate
+FROM user_nfts un
+LEFT JOIN nft_settings ns ON un.nft_type_id = ns.id
+LIMIT 5; 

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { useAuth } from '@/lib/auth'
 
 interface UserProfile {
     id: string
@@ -20,6 +21,7 @@ interface UserProfile {
 function MyPageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<UserProfile | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -146,7 +148,10 @@ function MyPageContent() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <Link 
                     href="/dashboard" 

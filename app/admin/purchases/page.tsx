@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase'
 import AdminSidebar from '../../../components/AdminSidebar'
 import Header from '../../../components/Header'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth'
 
 interface PurchaseRequest {
     id: string
@@ -26,6 +27,7 @@ export default function AdminPurchasesPage() {
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const router = useRouter()
+    const { handleLogout } = useAuth()
 
     useEffect(() => {
         checkAuth()
@@ -135,7 +137,11 @@ export default function AdminPurchasesPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 p-8">

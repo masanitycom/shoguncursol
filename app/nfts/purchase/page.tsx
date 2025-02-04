@@ -4,19 +4,23 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
+import NFTList from './NFTList'
+import { useAuth } from '@/lib/auth'
 
 interface NFT {
     id: string
     name: string
-    nft_type: string
-    status: 'active' | 'inactive'
     price: number
-    image_url?: string
+    daily_rate: number
     description?: string
+    image_url?: string
+    nft_type: string
+    status: string
 }
 
 export default function NFTPurchasePage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [nfts, setNfts] = useState<NFT[]>([])
     const [selectedNFT, setSelectedNFT] = useState<string>('')
@@ -24,7 +28,6 @@ export default function NFTPurchasePage() {
     const [error, setError] = useState<string | null>(null)
     const [paymentMessage, setPaymentMessage] = useState<string>('')
     const [loading, setLoading] = useState(true)
-    const [paymentMethod, setPaymentMethod] = useState('bank_transfer')
 
     useEffect(() => {
         checkAuth()
@@ -38,6 +41,12 @@ export default function NFTPurchasePage() {
                 router.push('/login')
                 return
             }
+
+            if (session.user.email === 'testadmin@gmail.com') {
+                router.push('/admin/dashboard')
+                return
+            }
+
             setUser(session.user)
             await fetchNFTs()
         } catch (error) {
@@ -50,26 +59,44 @@ export default function NFTPurchasePage() {
     const fetchNFTs = async () => {
         try {
             const { data: nfts, error } = await supabase
-                .from('nfts')
-                .select('*')
+                .from('nft_settings')
+                .select(`
+                    id,
+                    name,
+                    price,
+                    daily_rate,
+                    image_url,
+                    status
+                `)
                 .eq('status', 'active')
-                .order('price', { ascending: true })
+                .order('price')
 
             if (error) throw error
-            console.log('Fetched NFTs:', nfts)  // デバッグ用
 
-            // 型を明示的に指定して変換
-            const typedNfts: NFT[] = nfts?.map(nft => ({
-                id: nft.id,
-                name: nft.name,
-                nft_type: nft.nft_type,
-                status: nft.status,
-                price: nft.price,
-                image_url: nft.image_url,
-                description: nft.description
-            })) || []
+            const { data: nftTypes, error: nftError } = await supabase
+                .from('nfts')
+                .select('id, description, nft_type')
+                .eq('nft_type', 'normal')
 
-            setNfts(typedNfts)
+            if (nftError) throw nftError
+
+            const formattedNfts = nfts
+                .filter(nft => nftTypes.some(type => type.id === nft.id))
+                .map(nft => {
+                    const nftData = nftTypes.find(type => type.id === nft.id)
+                    return {
+                        id: nft.id,
+                        name: nft.name,
+                        price: Number(nft.price),
+                        daily_rate: Number(nft.daily_rate),
+                        description: nftData?.description,
+                        image_url: nft.image_url ?? undefined,
+                        nft_type: nftData?.nft_type ?? 'normal',
+                        status: nft.status
+                    }
+                })
+
+            setNfts(formattedNfts)
         } catch (error: any) {
             console.error('Error fetching NFTs:', error)
             setError('NFTの取得に失敗しました')
@@ -110,14 +137,10 @@ export default function NFTPurchasePage() {
                 .insert({
                     user_id: user.id,
                     nft_id: selectedNFT,
-                    payment_method: paymentMethod,
                     status: 'pending'
                 })
 
-            if (insertError) {
-                console.error('Insert error:', insertError)
-                throw new Error('購入申請の登録に失敗しました')
-            }
+            if (insertError) throw insertError
 
             setShowPaymentModal(true)
         } catch (error: any) {
@@ -128,20 +151,19 @@ export default function NFTPurchasePage() {
         }
     }
 
+    if (loading) return <div>Loading...</div>
+    if (error) return <div>{error}</div>
     if (!user) return null
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-2xl mx-auto">
                     <h1 className="text-3xl font-bold text-white mb-8">NFT購入</h1>
-
-                    {error && (
-                        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-                            {error}
-                        </div>
-                    )}
 
                     <form onSubmit={handlePurchase} className="bg-gray-800 rounded-lg shadow-lg p-6">
                         <div className="mb-6">
@@ -154,7 +176,7 @@ export default function NFTPurchasePage() {
                                 <option value="">選択してください</option>
                                 {nfts.map((nft) => (
                                     <option key={nft.id} value={nft.id}>
-                                        {nft.name}
+                                        {nft.name} - {nft.price} USDT (日利: {(nft.daily_rate * 100).toFixed(2)}%)
                                     </option>
                                 ))}
                             </select>
@@ -162,13 +184,13 @@ export default function NFTPurchasePage() {
 
                         <button
                             type="submit"
-                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
+                            disabled={loading}
+                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
                         >
                             購入する
                         </button>
                     </form>
 
-                    {/* 支払い情報モーダル */}
                     {showPaymentModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
                             <div className="bg-gray-800 rounded-lg max-w-2xl w-full p-6">

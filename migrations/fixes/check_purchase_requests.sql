@@ -63,4 +63,14 @@ WHERE id IN (
     SELECT id FROM nft_purchase_requests
     ORDER BY created_at DESC
     LIMIT 2
-); 
+);
+
+-- NFT購入リクエストの構造を確認
+SELECT 
+    table_name,
+    column_name,
+    data_type,
+    is_nullable
+FROM information_schema.columns 
+WHERE table_schema = 'public' 
+AND table_name IN ('nft_purchase_requests', 'nft_settings'); 

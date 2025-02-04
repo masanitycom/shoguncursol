@@ -1,9 +1,9 @@
-export type NFTType = {
-  id: number
-  name: string
+export interface NFTType {
   price: number
+  name: string
   maxDailyRate: number
   isLegacy: boolean
+  currentDailyRate?: number
 }
 
 export type UserNFT = {

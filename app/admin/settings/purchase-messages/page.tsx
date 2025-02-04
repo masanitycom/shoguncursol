@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../../lib/supabase'
-import Header from '../../../../components/Header'
-import AdminSidebar from '../../../../components/AdminSidebar'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import AdminSidebar from '@/components/AdminSidebar'
+import { useAuth } from '@/lib/auth'
 
 interface PaymentInfo {
     bank_name?: string
@@ -26,6 +27,7 @@ interface PurchaseMessage {
 
 export default function PurchaseMessagesPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [messages, setMessages] = useState<PurchaseMessage[]>([])
     const [loading, setLoading] = useState(false)
@@ -93,7 +95,11 @@ export default function PurchaseMessagesPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">

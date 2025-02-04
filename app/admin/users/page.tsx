@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
+import { useAuth } from '@/lib/auth'
 
 interface User {
     id: string;
@@ -25,6 +26,7 @@ interface EditingUser extends User {
 
 export default function AdminUsersPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [users, setUsers] = useState<EditingUser[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -37,6 +39,7 @@ export default function AdminUsersPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
+    const [user, setUser] = useState<any>(null)
 
     useEffect(() => {
         checkAuth()
@@ -48,6 +51,7 @@ export default function AdminUsersPage() {
             router.push('/admin/login')
             return
         }
+        setUser(session.user)
         fetchUsers()
     }
 
@@ -161,9 +165,15 @@ export default function AdminUsersPage() {
         }
     }
 
+    if (!user) return null
+
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={null} isAdmin={true} />
+            <Header 
+                user={user}
+                isAdmin={true}
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 p-8">

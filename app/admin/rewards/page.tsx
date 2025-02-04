@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
-import Header from '../../../components/Header'
-import AdminSidebar from '../../../components/AdminSidebar'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import AdminSidebar from '@/components/AdminSidebar'
+import { useAuth } from '@/lib/auth'
 import { 
     CalculatorIcon, 
     ArrowPathIcon,
@@ -34,6 +35,7 @@ interface UserRewardInfo {
 
 export default function RewardsPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [activeTab, setActiveTab] = useState<'requests' | 'info'>('requests')
     const [searchTerm, setSearchTerm] = useState('')
@@ -46,17 +48,12 @@ export default function RewardsPage() {
     }, [])
 
     const checkAuth = async () => {
-        try {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
-                router.push('/admin/login')
-                return
-            }
-            setUser(session.user)
-        } catch (error) {
-            console.error('Auth error:', error)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
             router.push('/admin/login')
+            return
         }
+        setUser(session.user)
     }
 
     const fetchRewardRequests = async () => {
@@ -100,7 +97,11 @@ export default function RewardsPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">

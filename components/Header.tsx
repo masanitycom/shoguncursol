@@ -6,11 +6,19 @@ import { supabase } from '@/lib/supabase'
 
 interface HeaderProps {
     user: any;
+    profile?: {
+        display_name: string;
+        email: string;
+    };
+    onLogout: () => void;
     isAdmin?: boolean;
 }
 
-export default function Header({ user, isAdmin }: HeaderProps) {
+export default function Header({ user, profile, onLogout, isAdmin }: HeaderProps) {
     const router = useRouter()
+
+    // display_nameがある場合はそれを、なければemailを表示
+    const displayName = profile?.display_name || user?.email || 'ユーザー';
 
     return (
         <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
@@ -23,7 +31,7 @@ export default function Header({ user, isAdmin }: HeaderProps) {
                     </div>
 
                     <div className="flex items-center space-x-4">
-                        <span className="text-gray-300">{user?.email}</span>
+                        <span className="text-white">{displayName}</span>
                         <button
                             onClick={async () => {
                                 await supabase.auth.signOut()

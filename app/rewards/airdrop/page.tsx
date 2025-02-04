@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { useAuth } from '@/lib/auth'
 
 interface Task {
     id: string
@@ -17,6 +18,7 @@ interface Task {
 
 export default function AirdropPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -106,7 +108,10 @@ export default function AirdropPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-2xl mx-auto bg-gray-800 rounded-lg shadow-lg p-8">
                     <h1 className="text-3xl font-bold text-white mb-8">

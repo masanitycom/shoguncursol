@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
-import Header from '../../../components/Header'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import { useAuth } from '@/lib/auth'
 
 interface RewardHistory {
     id: string
@@ -17,6 +18,7 @@ interface RewardHistory {
 
 export default function RewardHistoryPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [history, setHistory] = useState<RewardHistory[]>([])
     const [loading, setLoading] = useState(true)
@@ -73,7 +75,10 @@ export default function RewardHistoryPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} />
+            <Header 
+                user={user} 
+                onLogout={handleLogout}
+            />
             <main className="container mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold text-white mb-8">報酬履歴</h1>
 

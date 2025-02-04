@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../../lib/supabase'
-import Header from '../../../../components/Header'
-import AdminSidebar from '../../../../components/AdminSidebar'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import AdminSidebar from '@/components/AdminSidebar'
+import { useAuth } from '@/lib/auth'
 
 interface NewUserForm {
     nameKana: string
@@ -19,6 +20,7 @@ interface NewUserForm {
 
 export default function NewUserPage() {
     const router = useRouter()
+    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -95,17 +97,12 @@ export default function NewUserPage() {
     }
 
     const checkAuth = async () => {
-        try {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
-                router.push('/admin/login')
-                return
-            }
-            setUser(session.user)
-        } catch (error) {
-            console.error('Auth error:', error)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
             router.push('/admin/login')
+            return
         }
+        setUser(session.user)
     }
 
     if (!user) {
@@ -118,7 +115,11 @@ export default function NewUserPage() {
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">

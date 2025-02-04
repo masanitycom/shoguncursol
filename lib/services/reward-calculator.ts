@@ -1,7 +1,23 @@
 import { supabase } from '../supabase';
 import { LevelCalculator } from './level-calculator';
-import { LEVELS, Level } from '../constants/levels';
-import type { NFTType, UserNFT, DailyRate, NFTDailyProfit } from '@/types/nft';
+import { LEVELS } from '../constants/levels';
+import type { NFTType } from '@/types/nft';
+
+// データベースから取得するNFTの型を定義
+interface UserNFTData {
+    id: string;
+    nftType: NFTTypeFromDB;  // 配列ではなく単一のオブジェクト
+}
+
+// DBから取得するNFT型の定義
+interface NFTTypeFromDB {
+    id: string;
+    name: string;
+    price: string | number;
+    maxDailyRate: string | number;
+    isLegacy: boolean;
+    currentDailyRate: string | number;
+}
 
 interface WeeklyProfitShare {
     totalProfit: number;        // 会社の総利益
@@ -47,11 +63,15 @@ const NFT_DAILY_RATES: { [key: string]: number } = {
 };
 
 export class RewardCalculator {
-    // 日利計算（NFTタイプに基づく）
-    static calculateDailyReward(nftType: NFTType, dailyRate: number): number {
-        const maxRate = NFT_DAILY_RATES[nftType.name] || 0.5;
-        const effectiveRate = Math.min(dailyRate, maxRate, nftType.maxDailyRate);
-        return nftType.price * (effectiveRate / 100);
+    // 日利計算
+    static calculateDailyReward(nft: NFTType): number {
+        const maxRate = NFT_DAILY_RATES[nft.name] || 0.5;
+        const effectiveRate = Math.min(
+            nft.currentDailyRate || 0.5,
+            maxRate,
+            nft.maxDailyRate
+        );
+        return nft.price * (effectiveRate / 100);
     }
 
     // 複利計算
@@ -132,14 +152,34 @@ export class RewardCalculator {
             .from('user_nfts')
             .select(`
                 id,
-                nftType:nft_type (*)
+                nftType:nft_type (
+                    id,
+                    name,
+                    price,
+                    maxDailyRate,
+                    isLegacy,
+                    currentDailyRate
+                )
             `)
             .eq('userId', userId)
             .eq('isActive', true);
 
-        const totalDailyRewards = (userNfts || []).reduce((sum, nft) => {
+        // 型アサーションを2段階で行う
+        const typedUserNfts = (userNfts as unknown) as UserNFTData[];
+
+        const totalDailyRewards = (typedUserNfts || []).reduce((sum, nft) => {
             if (!nft.nftType) return sum;
-            return sum + this.calculateDailyReward(nft.nftType, 0.5);
+
+            // NFTTypeに変換
+            const nftData: NFTType = {
+                name: nft.nftType.name,
+                price: Number(nft.nftType.price),
+                maxDailyRate: Number(nft.nftType.maxDailyRate),
+                isLegacy: nft.nftType.isLegacy || false,
+                currentDailyRate: Number(nft.nftType.currentDailyRate) || 0.5
+            };
+
+            return sum + this.calculateDailyReward(nftData);
         }, 0);
 
         const unificationBonus = await this.calculateUnificationBonus(userId);

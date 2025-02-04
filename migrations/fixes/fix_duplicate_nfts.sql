@@ -75,4 +75,65 @@ BEGIN
     INNER JOIN nft_settings ns ON lar.nft_id = ns.id
     ORDER BY lar.approved_at DESC;
 END;
-$$ LANGUAGE plpgsql; 
+$$ LANGUAGE plpgsql;
+
+-- 1. 重複しているNFTの詳細を確認
+SELECT 
+    ns.id,
+    ns.name,
+    ns.price,
+    ns.daily_rate,
+    ns.created_at,
+    n.description,
+    COUNT(npr.id) as purchase_request_count,
+    STRING_AGG(DISTINCT npr.status, ', ') as request_statuses
+FROM nft_settings ns
+LEFT JOIN nfts n ON ns.id = n.id
+LEFT JOIN nft_purchase_requests npr ON ns.id = npr.nft_id
+WHERE ns.name = 'SHOGUN NFT 3000'
+GROUP BY ns.id, ns.name, ns.price, ns.daily_rate, ns.created_at, n.description
+ORDER BY ns.created_at;
+
+-- 2. 購入リクエストの移行（古い方から新しい方へ）
+WITH target_nfts AS (
+    SELECT 
+        id,
+        created_at,
+        ROW_NUMBER() OVER (PARTITION BY name, price ORDER BY created_at) as rn
+    FROM nft_settings
+    WHERE name = 'SHOGUN NFT 3000'
+)
+UPDATE nft_purchase_requests
+SET nft_id = (
+    SELECT id FROM target_nfts WHERE rn = 1
+)
+WHERE nft_id IN (
+    SELECT id FROM target_nfts WHERE rn = 2
+);
+
+-- 3. 重複データの削除（購入リクエストを移行した後）
+WITH duplicates AS (
+    SELECT 
+        id,
+        ROW_NUMBER() OVER (PARTITION BY name, price ORDER BY created_at) as rn
+    FROM nft_settings
+    WHERE name = 'SHOGUN NFT 3000'
+)
+DELETE FROM nft_settings
+WHERE id IN (
+    SELECT id FROM duplicates WHERE rn > 1
+);
+
+-- 4. 確認
+SELECT 
+    ns.id,
+    ns.name,
+    ns.price,
+    ns.daily_rate,
+    n.description,
+    COUNT(npr.id) as purchase_request_count
+FROM nft_settings ns
+LEFT JOIN nfts n ON ns.id = n.id
+LEFT JOIN nft_purchase_requests npr ON ns.id = npr.nft_id
+WHERE ns.name = 'SHOGUN NFT 3000'
+GROUP BY ns.id, ns.name, ns.price, ns.daily_rate, n.description; 

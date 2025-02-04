@@ -1,9 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 import { RewardCalculator } from '@/lib/services/reward-calculator'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
+import type { NFTType } from '@/types/nft'
+import { useAuth } from '@/lib/auth'
 
 interface TestData {
     investment: number
@@ -13,9 +17,25 @@ interface TestData {
     sharingAmount: number
 }
 
-export default function RewardCalculationPage() {
+export default function CalculateRewardsPage() {
+    const router = useRouter()
+    const { handleLogout } = useAuth()
+    const [user, setUser] = useState<any>(null)
     const [results, setResults] = useState<any>(null)
     const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        checkAuth()
+    }, [])
+
+    const checkAuth = async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
+            router.push('/admin/login')
+            return
+        }
+        setUser(session.user)
+    }
 
     const testCalculation = async () => {
         setLoading(true)
@@ -29,11 +49,17 @@ export default function RewardCalculationPage() {
                 sharingAmount: 200000
             }
 
+            // NFTTypeに変換
+            const nftData: NFTType = {
+                price: testData.investment,
+                name: 'SHOGUN NFT1000',
+                maxDailyRate: 1.0,        // 固定の最大日利
+                isLegacy: false,          // 新規NFTなのでfalse
+                currentDailyRate: testData.dailyRate  // 現在の日利
+            }
+
             // 個別の計算を実行
-            const dailyReward = RewardCalculator.calculateDailyReward(
-                testData.investment,
-                testData.dailyRate
-            )
+            const dailyReward = RewardCalculator.calculateDailyReward(nftData)
 
             const compoundReward = RewardCalculator.calculateCompoundInterest(
                 testData.investment,
@@ -61,9 +87,15 @@ export default function RewardCalculationPage() {
         }
     }
 
+    if (!user) return null
+
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={null} isAdmin={true} />
+            <Header 
+                user={user}
+                isAdmin={true}
+                onLogout={handleLogout}
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 p-6">
