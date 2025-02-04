@@ -1,9 +1,24 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+
+// ウォレットタイプの型を修正
+type WalletType = 'EVO' | 'その他' | ''
+
+interface SignUpFormData {
+    name: string
+    username: string
+    email: string
+    password: string
+    confirmPassword: string
+    phone: string
+    referrer_id: string
+    wallet_address?: string
+    wallet_type: WalletType
+}
 
 interface Props {
     defaultReferrerId?: string
@@ -20,49 +35,60 @@ interface ValidationState {
 
 export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [formData, setFormData] = useState({
-        nameKana: '',
-        userId: '',
+    const [formData, setFormData] = useState<SignUpFormData>({
+        name: '',
+        username: '',
         email: '',
         password: '',
         confirmPassword: '',
         phone: '',
-        referrerId: defaultReferrerId || '',
-        walletAddress: '',
-        walletType: 'EVOカード'
+        referrer_id: defaultReferrerId || '',
+        wallet_address: '',
+        wallet_type: ''
     })
+
+    useEffect(() => {
+        const refId = searchParams.get('ref')
+        if (refId) {
+            setFormData(prev => ({
+                ...prev,
+                referrer_id: refId
+            }))
+        }
+    }, [searchParams])
 
     // バリデーションルールの修正
     const VALIDATION_PATTERNS = {
-        nameKana: /^[ァ-ヶー0-9A-Za-z]+$/,  // カタカナと英数字のみ
-        userId: /^[a-zA-Z0-9]{6,}$/,        // 半角英数6文字以上
+        name: /^[ァ-ヶー0-9A-Za-z]+$/,  // カタカナと英数字のみ
+        username: /^[a-zA-Z0-9]{6,}$/,        // 半角英数6文字以上
         phone: /^[0-9]{10,11}$/,            // 数字10-11桁
-        referrerId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,  // UUID形式
-        walletAddress: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
+        referrer_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,  // UUID形式
+        wallet_address: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
     }
 
     // エラーメッセージの定義
     const VALIDATION_MESSAGES = {
-        nameKana: 'カタカナと英数字のみで入力してください（スペース不可）',
-        userId: 'ユーザーIDは半角英数字6文字以上で入力してください',
+        name: 'カタカナと英数字のみで入力してください（スペース不可）',
+        username: 'ユーザーIDは半角英数字6文字以上で入力してください',
         phone: '電話番号は10桁または11桁の数字で入力してください',
-        referrerId: '紹介者IDはUUID形式で入力してください',
-        walletAddress: '有効なBEP20のUSDTアドレスを入力してください'
+        referrer_id: '紹介者IDはUUID形式で入力してください',
+        wallet_address: '有効なBEP20のUSDTアドレスを入力してください'
     }
 
     // バリデーション状態の管理を修正
     const [validation, setValidation] = useState<ValidationState>({
-        nameKana: { isValid: true, message: '', touched: false },
-        userId: { isValid: true, message: '', touched: false },
+        name: { isValid: true, message: '', touched: false },
+        username: { isValid: true, message: '', touched: false },
         email: { isValid: true, message: '', touched: false },
         password: { isValid: true, message: '', touched: false },
         confirmPassword: { isValid: true, message: '', touched: false },
         phone: { isValid: true, message: '', touched: false },
-        referrerId: { isValid: true, message: '', touched: false },
-        walletAddress: { isValid: true, message: '', touched: false },
-        walletType: { isValid: true, message: '', touched: false }  // walletTypeを追加
+        referrer_id: { isValid: true, message: '', touched: false },
+        wallet_address: { isValid: true, message: '', touched: false },
+        wallet_type: { isValid: true, message: '', touched: false }  // wallet_typeを追加
     })
 
     // フィールドの検証を行う関数
@@ -71,26 +97,26 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         let message = ''
 
         switch (name) {
-            case 'nameKana':
-                isValid = VALIDATION_PATTERNS.nameKana.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.nameKana
+            case 'name':
+                isValid = VALIDATION_PATTERNS.name.test(value)
+                message = isValid ? '' : VALIDATION_MESSAGES.name
                 break
-            case 'userId':
-                isValid = VALIDATION_PATTERNS.userId.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.userId
+            case 'username':
+                isValid = VALIDATION_PATTERNS.username.test(value)
+                message = isValid ? '' : VALIDATION_MESSAGES.username
                 break
             case 'phone':
                 isValid = VALIDATION_PATTERNS.phone.test(value)
                 message = isValid ? '' : VALIDATION_MESSAGES.phone
                 break
-            case 'referrerId':
-                isValid = VALIDATION_PATTERNS.referrerId.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.referrerId
+            case 'referrer_id':
+                isValid = VALIDATION_PATTERNS.referrer_id.test(value)
+                message = isValid ? '' : VALIDATION_MESSAGES.referrer_id
                 break
-            case 'walletAddress':
+            case 'wallet_address':
                 if (value) { // 任意項目なので、値がある場合のみ検証
-                    isValid = VALIDATION_PATTERNS.walletAddress.test(value)
-                    message = isValid ? '' : VALIDATION_MESSAGES.walletAddress
+                    isValid = VALIDATION_PATTERNS.wallet_address.test(value)
+                    message = isValid ? '' : VALIDATION_MESSAGES.wallet_address
                 }
                 break
             case 'confirmPassword':
@@ -112,7 +138,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     }
 
     // 入力ハンドラーを更新
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target
         setFormData(prev => ({ ...prev, [name]: value }))
         validateField(name, value)
@@ -129,24 +155,24 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         setError(null)
 
         // カスタムバリデーション
-        if (!validation.nameKana.isValid) {
-            setError(validation.nameKana.message)
+        if (!validation.name.isValid) {
+            setError(validation.name.message)
             return
         }
-        if (!validation.userId.isValid) {
-            setError(validation.userId.message)
+        if (!validation.username.isValid) {
+            setError(validation.username.message)
             return
         }
         if (!validation.phone.isValid) {
             setError(validation.phone.message)
             return
         }
-        if (!validation.referrerId.isValid) {
-            setError(validation.referrerId.message)
+        if (!validation.referrer_id.isValid) {
+            setError(validation.referrer_id.message)
             return
         }
-        if (formData.walletAddress && !validation.walletAddress.isValid) {
-            setError(validation.walletAddress.message)
+        if (formData.wallet_address && !validation.wallet_address.isValid) {
+            setError(validation.wallet_address.message)
             return
         }
 
@@ -163,12 +189,12 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                 password: formData.password,
                 options: {
                     data: {
-                        name_kana: formData.nameKana,
-                        user_id: formData.userId,
+                        name: formData.name,
+                        username: formData.username,
                         phone: formData.phone,
-                        referrer_id: formData.referrerId,
-                        wallet_address: formData.walletAddress,
-                        wallet_type: formData.walletType
+                        referrer_id: formData.referrer_id,
+                        wallet_address: formData.wallet_address,
+                        wallet_type: formData.wallet_type
                     }
                 }
             })
@@ -181,13 +207,13 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                     .from('users')
                     .insert([{
                         id: authData.user.id,
-                        name_kana: formData.nameKana,
-                        user_id: formData.userId,
+                        name: formData.name,
+                        username: formData.username,
                         email: formData.email,
                         phone: formData.phone,
-                        referrer_id: formData.referrerId,
-                        wallet_address: formData.walletAddress,
-                        wallet_type: formData.walletType,
+                        referrer_id: formData.referrer_id,
+                        wallet_address: formData.wallet_address,
+                        wallet_type: formData.wallet_type,
                         active: true,
                         investment_amount: 0,
                         level: 'normal'
@@ -254,20 +280,20 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                             </label>
                             <input
                                 type="text"
-                                name="nameKana"
-                                value={formData.nameKana}
-                                onChange={handleInputChange}
+                                name="name"
+                                value={formData.name}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
                                 className={`${inputClassName} ${
-                                    validation.nameKana.touched && !validation.nameKana.isValid 
+                                    validation.name.touched && !validation.name.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
                             />
-                            {validation.nameKana.touched && !validation.nameKana.isValid && (
+                            {validation.name.touched && !validation.name.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
-                                    {validation.nameKana.message}
+                                    {validation.name.message}
                                 </p>
                             )}
                         </div>
@@ -280,22 +306,22 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                             </label>
                             <input
                                 type="text"
-                                name="userId"
-                                value={formData.userId}
-                                onChange={handleInputChange}
+                                name="username"
+                                value={formData.username}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
                                 pattern="^[a-zA-Z0-9]+$"
                                 placeholder="例：user123"
                                 className={`${inputClassName} ${
-                                    validation.userId.touched && !validation.userId.isValid 
+                                    validation.username.touched && !validation.username.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
                             />
-                            {validation.userId.touched && !validation.userId.isValid && (
+                            {validation.username.touched && !validation.username.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
-                                    {validation.userId.message}
+                                    {validation.username.message}
                                 </p>
                             )}
                         </div>
@@ -309,7 +335,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                                 type="email"
                                 name="email"
                                 value={formData.email}
-                                onChange={handleInputChange}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
                                 placeholder="example@email.com"
@@ -336,7 +362,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                                 type="password"
                                 name="password"
                                 value={formData.password}
-                                onChange={handleInputChange}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
                                 minLength={8}
@@ -363,7 +389,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                                 type="password"
                                 name="confirmPassword"
                                 value={formData.confirmPassword}
-                                onChange={handleInputChange}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
                                 minLength={8}
@@ -391,7 +417,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                                 type="tel"
                                 name="phone"
                                 value={formData.phone}
-                                onChange={handleInputChange}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
                                 pattern="^[0-9]*$"
@@ -416,23 +442,23 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                             </label>
                             <input
                                 type="text"
-                                name="referrerId"
-                                value={formData.referrerId}
-                                onChange={handleInputChange}
+                                name="referrer_id"
+                                value={formData.referrer_id}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
-                                pattern={VALIDATION_PATTERNS.referrerId.source}
-                                disabled={!!defaultReferrerId}
+                                pattern={VALIDATION_PATTERNS.referrer_id.source}
+                                disabled={!!searchParams.get('ref')}
                                 placeholder="紹介者のIDを入力"
                                 className={`${inputClassName} ${
-                                    validation.referrerId.touched && !validation.referrerId.isValid 
+                                    validation.referrer_id.touched && !validation.referrer_id.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
                             />
-                            {validation.referrerId.touched && !validation.referrerId.isValid && (
+                            {validation.referrer_id.touched && !validation.referrer_id.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
-                                    {validation.referrerId.message}
+                                    {validation.referrer_id.message}
                                 </p>
                             )}
                         </div>
@@ -444,21 +470,21 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                             </label>
                             <input
                                 type="text"
-                                name="walletAddress"
-                                value={formData.walletAddress}
-                                onChange={handleInputChange}
+                                name="wallet_address"
+                                value={formData.wallet_address}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
-                                pattern={VALIDATION_PATTERNS.walletAddress.source}
+                                pattern={VALIDATION_PATTERNS.wallet_address.source}
                                 placeholder="0xで始まるBEP20のUSDTアドレス"
                                 className={`${inputClassName} ${
-                                    validation.walletAddress.touched && !validation.walletAddress.isValid 
+                                    validation.wallet_address.touched && !validation.wallet_address.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
                             />
-                            {validation.walletAddress.touched && !validation.walletAddress.isValid && (
+                            {validation.wallet_address.touched && !validation.wallet_address.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
-                                    {validation.walletAddress.message}
+                                    {validation.wallet_address.message}
                                 </p>
                             )}
                         </div>
@@ -466,18 +492,19 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                         <div>
                             <label className={labelClassName}>
                                 ウォレットの種類
-                                <OptionalBadge />
+                                <RequiredBadge />
                             </label>
                             <select
-                                name="walletType"
-                                value={formData.walletType}
-                                onChange={handleInputChange}
+                                name="wallet_type"
+                                value={formData.wallet_type}
+                                onChange={handleChange}
                                 onBlur={handleBlur}
-                                className={inputClassName}  // バリデーション表示を削除（任意項目のため）
+                                required
+                                className={inputClassName}
                             >
                                 <option value="">選択してください</option>
-                                <option value="EVOカード">EVOカード</option>
-                                <option value="その他">その他のウォレット</option>
+                                <option value="EVO">EVOカード</option>
+                                <option value="その他">その他</option>
                             </select>
                         </div>
 

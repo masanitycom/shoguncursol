@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
@@ -155,16 +155,14 @@ export default function ProfilePage() {
         }
     }
 
-    // 紹介用URLを生成する関数
-    const getReferralUrl = () => {
-        if (!user?.id) return ''
-        return `${process.env.NEXT_PUBLIC_SITE_URL}/signup/${user?.id}`
-    }
+    const generateReferralUrl = useCallback((userId: string) => {
+        return `https://shogun-trade.com/signup?ref=${userId}`
+    }, [])
 
     // LINEでシェア
     const shareToLINE = () => {
         const url = `https://line.me/R/msg/text/?${encodeURIComponent(
-            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${getReferralUrl()}`
+            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(user?.id || '')}`
         )}`
         window.open(url, '_blank')
     }
@@ -378,20 +376,24 @@ export default function ProfilePage() {
                                     </div>
 
                                     {/* 紹介URL */}
-                                    <div>
-                                        <p className="text-gray-400 mb-2">紹介URL</p>
-                                        <div className="flex items-center space-x-4">
-                                            <p className="text-sm font-mono text-white bg-gray-800 px-4 py-2 rounded break-all">
-                                                {getReferralUrl()}
-                                            </p>
+                                    <div className="mt-8 bg-gray-800 p-6 rounded-lg">
+                                        <h2 className="text-xl font-bold text-white mb-4">紹介URL</h2>
+                                        <div className="flex items-center gap-4">
+                                            <input
+                                                type="text"
+                                                value={generateReferralUrl(user.id)}
+                                                readOnly
+                                                className="flex-1 bg-gray-700 text-white px-4 py-2 rounded"
+                                            />
                                             <button
                                                 onClick={() => {
-                                                    navigator.clipboard.writeText(getReferralUrl())
-                                                    setSuccess('紹介URLをコピーしました')
+                                                    if (user) {
+                                                        navigator.clipboard.writeText(generateReferralUrl(user.id))
+                                                    }
                                                 }}
-                                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 whitespace-nowrap"
+                                                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                                             >
-                                                URLをコピー
+                                                コピー
                                             </button>
                                         </div>
                                     </div>
@@ -405,7 +407,7 @@ export default function ProfilePage() {
                                                 onClick={() => setIsQRModalOpen(true)}
                                             >
                                                 <QRCodeSVG 
-                                                    value={getReferralUrl()}
+                                                    value={generateReferralUrl(user.id)}
                                                     size={200}
                                                     level="H"
                                                     includeMargin
@@ -450,7 +452,7 @@ export default function ProfilePage() {
                     <div className="fixed inset-0 flex items-center justify-center p-4">
                         <Dialog.Panel className="bg-white rounded-lg p-8">
                             <QRCodeSVG 
-                                value={getReferralUrl()}
+                                value={generateReferralUrl(user.id)}
                                 size={300}
                                 level="H"
                                 includeMargin

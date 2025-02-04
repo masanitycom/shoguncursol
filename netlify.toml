@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+  ignore = "git diff --quiet HEAD^ HEAD ./"  # 変更がない場合はビルドしない
+
+[build.environment]
+  NEXT_PUBLIC_SITE_URL = "https://your-site-name.netlify.app"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs" 

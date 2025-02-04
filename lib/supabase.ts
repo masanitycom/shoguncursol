@@ -10,8 +10,11 @@ console.log('Supabase Config:', {
     keyLength: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length
 })
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    throw new Error('Missing Supabase environment variables')
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_URL')
+}
+if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY')
 }
 
 console.log('Initializing Supabase client')
@@ -19,13 +22,7 @@ console.log('Initializing Supabase client')
 // 単一のsupabaseインスタンスを作成
 export const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-        auth: {
-            autoRefreshToken: true,
-            persistSession: true
-        }
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
 // 初期化時のセッション確認
