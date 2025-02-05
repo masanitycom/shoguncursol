@@ -1,7 +1,7 @@
-import { supabase } from '../supabase';
+import { supabase } from '@/lib/supabase';
 import { LevelCalculator } from './level-calculator';
-import { LEVELS } from '../constants/levels';
-import type { NFTType } from '@/types/nft';
+import { LEVELS } from '@/lib/constants/levels';
+import type { NFTType, UserNFT } from '@/types/nft';
 
 // データベースから取得するNFTの型を定義
 interface UserNFTData {
@@ -65,13 +65,7 @@ const NFT_DAILY_RATES: { [key: string]: number } = {
 export class RewardCalculator {
     // 日利計算
     static calculateDailyReward(nft: NFTType): number {
-        const maxRate = NFT_DAILY_RATES[nft.name] || 0.5;
-        const effectiveRate = Math.min(
-            nft.currentDailyRate || 0.5,
-            maxRate,
-            nft.maxDailyRate
-        );
-        return nft.price * (effectiveRate / 100);
+        return nft.price * (nft.currentDailyRate || 0);
     }
 
     // 複利計算
@@ -80,7 +74,11 @@ export class RewardCalculator {
         dailyRate: number,
         days: number
     ): number {
-        return principal * Math.pow(1 + dailyRate / 100, days);
+        let amount = principal;
+        for (let i = 0; i < days; i++) {
+            amount += amount * dailyRate;
+        }
+        return amount - principal;
     }
 
     // ユーザーレベル情報の取得
@@ -133,9 +131,13 @@ export class RewardCalculator {
     }
 
     // 分配金計算
-    static async calculateProfitSharing(params: WeeklyProfitShare): Promise<number> {
-        const { totalProfit, sharingAmount } = params;
-        return sharingAmount * 0.2;
+    static async calculateProfitSharing(params: {
+        totalProfit: number;
+        sharingAmount: number;
+        weekStart: Date;
+        weekEnd: Date;
+    }): Promise<number> {
+        return params.sharingAmount;
     }
 
     // 総報酬計算
@@ -172,6 +174,7 @@ export class RewardCalculator {
 
             // NFTTypeに変換
             const nftData: NFTType = {
+                id: nft.nftType.id || `nft-${nft.id}`,  // idを追加
                 name: nft.nftType.name,
                 price: Number(nft.nftType.price),
                 maxDailyRate: Number(nft.nftType.maxDailyRate),
@@ -205,6 +208,43 @@ export class RewardCalculator {
         if (!level) return 0;
 
         return level.shareRate / 100;
+    }
+
+    // ユーザーの報酬計算
+    static async calculateUserRewards(userNFTs: UserNFT[]) {
+        try {
+            const rewards = await Promise.all(userNFTs.map(async nft => {
+                if (!nft.nftType) return null;
+
+                // NFTTypeに変換（idを必ず含める）
+                const nftData: NFTType = {
+                    id: nft.nftType.id || `nft-${nft.id}`, // nftのIDをフォールバックとして使用
+                    name: nft.nftType.name,
+                    price: Number(nft.nftType.price),
+                    maxDailyRate: Number(nft.nftType.maxDailyRate),
+                    currentDailyRate: Number(nft.nftType.currentDailyRate || 0),
+                    isLegacy: Boolean(nft.nftType.isLegacy)
+                };
+
+                const dailyReward = this.calculateDailyReward(nftData);
+                const compoundReward = this.calculateCompoundInterest(
+                    nftData.price,
+                    nftData.currentDailyRate || 0,
+                    5 // 営業日数
+                );
+
+                return {
+                    nftId: nft.id,
+                    dailyReward,
+                    compoundReward
+                };
+            }));
+
+            return rewards.filter(Boolean);
+        } catch (error) {
+            console.error('Error calculating user rewards:', error);
+            throw error;
+        }
     }
 }
 

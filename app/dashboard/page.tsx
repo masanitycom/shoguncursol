@@ -15,6 +15,7 @@ import {
 import DailyRatesDisplay from '@/components/DailyRatesDisplay'
 import { LEVELS } from '@/lib/constants/levels'
 import { NFTCard } from '@/components/NFTCard'
+import { calculateNFTStatus } from '@/lib/services/nft-status-calculator'
 
 // 1. まず、基本となる型を定義
 interface NFTSettings {
@@ -762,9 +763,6 @@ export default function DashboardPage() {
                         </Link>
                     </div>
 
-                    {/* 日利表示を追加 */}
-                    <DailyRatesDisplay />
-
                     {/* 所有NFT一覧 */}
                     <div className="bg-gray-800 rounded-lg p-6 mt-8">
                         <h2 className="text-xl font-bold text-white mb-6">所有NFT一覧</h2>
@@ -772,16 +770,31 @@ export default function DashboardPage() {
                             <div className="text-center text-gray-400">読み込み中...</div>
                         ) : userNFTs && userNFTs.length > 0 ? (
                             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                                {userNFTs.map((nft, index) => (
-                                    <div key={`${nft.id}-${index}`} className="bg-gray-700 rounded-lg overflow-hidden">
-                                        <NFTCard 
-                                            nft={{
-                                                ...nft,
-                                                created_at: formatDateToJST(nft.created_at)
-                                            }} 
-                                        />
-                                    </div>
-                                ))}
+                                {userNFTs.map((nft, index) => {
+                                    const statusInfo = calculateNFTStatus(new Date(nft.created_at))
+                                    
+                                    return (
+                                        <div key={`${nft.id}-${index}`} className="bg-gray-700 rounded-lg overflow-hidden">
+                                            <NFTCard 
+                                                nft={{
+                                                    ...nft,
+                                                    created_at: formatDateToJST(nft.created_at)
+                                                }} 
+                                            />
+                                            <div className="mt-2">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                                    ${statusInfo.status === '待機中' ? 'bg-yellow-100 text-yellow-800' : 
+                                                      statusInfo.status === '運用中' ? 'bg-green-100 text-green-800' : 
+                                                      'bg-red-100 text-red-800'}`}>
+                                                    {statusInfo.status}
+                                                </span>
+                                                <p className="mt-1 text-sm text-gray-300">
+                                                    {statusInfo.message}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
                             </div>
                         ) : (
                             <div className="text-center text-gray-400">NFTを所有していません</div>

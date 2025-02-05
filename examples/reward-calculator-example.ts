@@ -4,18 +4,23 @@ import type { NFTType } from '@/types/nft'
 async function runExamples() {
     // NFTデータの作成
     const nft: NFTType = {
+        id: 'example-nft-1',
         name: 'SHOGUN NFT1000',
         price: 1000,
         maxDailyRate: 1.0,
         isLegacy: false,
-        currentDailyRate: 0.5
+        currentDailyRate: 0.01
     }
 
     // 1. 通常の日利計算
     const dailyReward = RewardCalculator.calculateDailyReward(nft)
 
     // 2. 複利での日利計算（タスク未完了の場合）
-    const compoundReward = RewardCalculator.calculateCompoundInterest(1000, 0.5, 5)
+    const compoundReward = RewardCalculator.calculateCompoundInterest(
+        nft.price,
+        nft.currentDailyRate || 0,
+        5
+    )
 
     // 3. 分配金計算
     const profitShare = await RewardCalculator.calculateProfitSharing({

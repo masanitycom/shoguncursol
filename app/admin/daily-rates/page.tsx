@@ -14,7 +14,8 @@ interface NFT {
     daily_rate: number // 上限値
 }
 
-interface DailyRate {
+// 日利データの型を修正
+interface DailyRateData {
     date: string
     rates: { [key: string]: number } // NFT ID をキーとした実際の日利
 }
@@ -31,8 +32,8 @@ export default function DailyRatesPage() {
     const [user, setUser] = useState<any>(null)
     const [nfts, setNfts] = useState<NFT[]>([])
     const [selectedWeek, setSelectedWeek] = useState<string>(getMonday(new Date()))
-    const [dailyRates, setDailyRates] = useState<DailyRate[]>([])
-    const [loading, setLoading] = useState(false)
+    const [dailyRates, setDailyRates] = useState<DailyRateData[]>([])
+    const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [bulkSettings, setBulkSettings] = useState<BulkSettings>({
         nftId: null,
@@ -89,7 +90,7 @@ export default function DailyRatesPage() {
 
     useEffect(() => {
         if (selectedWeek) {
-            initializeWeekRates()
+            initializeWeeklyRates()
         }
     }, [selectedWeek, nfts])
 
@@ -117,38 +118,17 @@ export default function DailyRatesPage() {
         }
     }
 
-    // 週の日利を初期化
-    const initializeWeekRates = async () => {
+    const initializeWeeklyRates = () => {
         try {
             const weekDates = getWeekDates(selectedWeek)
-            const initialRates: DailyRate[] = weekDates.map(date => ({
+            const initialRates: DailyRateData[] = weekDates.map(date => ({
                 date,
                 rates: Object.fromEntries(nfts.map(nft => [nft.id, 0]))
             }))
-
-            // 既存の日利を取得
-            const { data, error } = await supabase
-                .from('daily_rates')
-                .select('*')
-                .gte('date', weekDates[0])
-                .lte('date', weekDates[4])
-
-            if (error) throw error
-
-            // 既存の日利で上書き
-            if (data) {
-                data.forEach(rate => {
-                    const dayRate = initialRates.find(r => r.date === rate.date.split('T')[0])
-                    if (dayRate) {
-                        dayRate.rates[rate.nft_id] = rate.rate
-                    }
-                })
-            }
-
             setDailyRates(initialRates)
-        } catch (error: any) {
-            console.error('Error initializing week rates:', error)
-            setError(error.message)
+        } catch (error) {
+            console.error('Error initializing rates:', error)
+            setError('日利の初期化に失敗しました')
         }
     }
 

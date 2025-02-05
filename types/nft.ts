@@ -1,9 +1,19 @@
+export type NFTStatus = '待機中' | '運用中' | '停止中'
+
+export interface NFTStatusInfo {
+    status: NFTStatus
+    startDate?: Date        // 運用開始予定日
+    daysUntilStart?: number // 開始までの残り日数
+    message: string         // 表示メッセージ
+}
+
 export interface NFTType {
-  price: number
-  name: string
-  maxDailyRate: number
-  isLegacy: boolean
-  currentDailyRate?: number
+    id: string;           // 必須フィールド
+    name: string;
+    price: number;
+    maxDailyRate: number;
+    currentDailyRate?: number;
+    isLegacy: boolean;
 }
 
 export type UserNFT = {

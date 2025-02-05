@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth'
 
 interface TestData {
     investment: number
+    purchaseDate: Date
     dailyRate: number
     days: number
     totalProfit: number
@@ -23,6 +24,7 @@ export default function CalculateRewardsPage() {
     const [user, setUser] = useState<any>(null)
     const [results, setResults] = useState<any>(null)
     const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         checkAuth()
@@ -37,25 +39,26 @@ export default function CalculateRewardsPage() {
         setUser(session.user)
     }
 
-    const testCalculation = async () => {
+    const calculateRewards = async () => {
         setLoading(true)
         try {
-            // テスト用のデータ
             const testData: TestData = {
                 investment: 1000,
-                dailyRate: 0.5,
-                days: 5,
+                purchaseDate: new Date('2024-01-01'),
+                dailyRate: 0.01,    // 1%
+                days: 5,            // 5営業日
                 totalProfit: 1000000,
                 sharingAmount: 200000
             }
 
             // NFTTypeに変換
             const nftData: NFTType = {
+                id: 'test-nft-1',
                 price: testData.investment,
                 name: 'SHOGUN NFT1000',
-                maxDailyRate: 1.0,        // 固定の最大日利
-                isLegacy: false,          // 新規NFTなのでfalse
-                currentDailyRate: testData.dailyRate  // 現在の日利
+                maxDailyRate: 1.0,
+                currentDailyRate: testData.dailyRate,
+                isLegacy: false
             }
 
             // 個別の計算を実行
@@ -81,7 +84,8 @@ export default function CalculateRewardsPage() {
             })
 
         } catch (error) {
-            console.error('Calculation error:', error)
+            console.error('Error calculating rewards:', error)
+            setError('報酬の計算に失敗しました')
         } finally {
             setLoading(false)
         }
@@ -102,12 +106,18 @@ export default function CalculateRewardsPage() {
                     <h1 className="text-2xl font-bold text-white mb-6">報酬計算テスト</h1>
                     
                     <button
-                        onClick={testCalculation}
+                        onClick={calculateRewards}
                         disabled={loading}
                         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
                     >
                         {loading ? '計算中...' : '計算実行'}
                     </button>
+
+                    {error && (
+                        <div className="mt-6 text-red-500">
+                            {error}
+                        </div>
+                    )}
 
                     {results && (
                         <div className="mt-6 space-y-4">

@@ -4,6 +4,7 @@ interface NFTCardProps {
     name: string;
     price: number;
     daily_rate: number;
+    currentDailyRate?: number;
     image_url: string | null;
     created_at: string;
   };
@@ -33,9 +34,16 @@ export function NFTCard({ nft }: NFTCardProps) {
         <h3 className="font-bold text-white text-sm mb-1">{nft.name}</h3>
         <div className="space-y-1 text-sm">
           <p className="text-emerald-400">${nft.price.toLocaleString()}</p>
-          <p className="text-blue-400">
-            日利上限: {(nft.daily_rate * 100).toFixed(2)}%
-          </p>
+          <div className="mt-2">
+            <p className="text-sm text-gray-300">
+              日利上限: {(nft.daily_rate * 100).toFixed(2)}%
+              {nft.currentDailyRate && (
+                <span className="ml-2 text-green-400">
+                  確定日利: {(nft.currentDailyRate * 100).toFixed(2)}%
+                </span>
+              )}
+            </p>
+          </div>
           <p className="text-gray-400">
             購入日: {new Date(nft.created_at).toLocaleDateString('ja-JP')}
           </p>
