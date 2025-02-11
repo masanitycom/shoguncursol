@@ -6,6 +6,19 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useAuth } from '@/lib/auth'
+import { PurchaseRequest as BasePurchaseRequest } from '@/types/nftPurchaseRequest'
+import { message as antMessage, Modal } from 'antd'
+
+// 既存の型を拡張
+interface PurchaseRequest extends Omit<BasePurchaseRequest, 'status'> {
+    user?: {
+        id: string;
+        name: string;
+        email: string;
+        display_id: string;
+    };
+    status: 'pending' | 'approved' | 'rejected' | 'deactivated';  // statusの型を拡張
+}
 
 interface NFTMaster {
     id: string
@@ -56,20 +69,190 @@ interface NFTSetting {
     description: string | null;
 }
 
-interface PurchaseRequest {
-    id: string
-    user_id: string
-    nft_id: string
-    status: string
-    created_at: string
-    approved_at: string | null
-    payment_method: string
-    nft_name: string
-    nft_price: number
-    nft_daily_rate: number
-    nft_image_url: string | null
-    user_display_name?: string
+interface EditRequestModalProps {
+    request: PurchaseRequest;
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (updatedRequest: PurchaseRequest) => Promise<void>;
+    onUpdateDates: () => Promise<void>;
 }
+
+interface NFTSettings {
+    id: string;
+    name: string;
+    price: number;
+    daily_rate: number;
+    image_url: string | null;
+    status: string | null;
+    owner_id: string | null;
+    description: string | null;
+}
+
+interface NFTPurchaseData {
+    nft_settings: NFTSettings[];
+}
+
+interface SupabaseNFTResponse {
+    nft_settings: Array<{
+        price: number;
+    }>;
+}
+
+interface PurchaseDataResponse {
+    nft_settings: {
+        price: number;
+    }[];
+}
+
+interface PurchaseDataItem {
+    nft_settings: {
+        price: number;
+    };
+}
+
+interface NFTPurchaseResponse {
+    nft_settings: {
+        price: number;
+    }[];
+}
+
+interface NFTSettingsResponse {
+    id: string;
+    price: number;
+    name: string;
+    daily_rate: number;
+    image_url: string | null;
+}
+
+interface EditDates {
+    created_at: string;
+    approved_at: string | null;
+}
+
+const EditRequestModal = ({ 
+    request, 
+    isOpen, 
+    onClose, 
+    onSave, 
+    onUpdateDates 
+}: EditRequestModalProps) => {
+    // formDataの型を明示的に定義
+    interface FormData {
+        created_at: string;
+        approved_at: string | null;
+        status: 'pending' | 'approved' | 'rejected' | 'deactivated';  // deactivatedを追加
+        nft_id: string;
+    }
+
+    const [formData, setFormData] = useState<FormData>({
+        created_at: request.created_at ? new Date(request.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+        approved_at: request.approved_at ? new Date(request.approved_at).toISOString().slice(0, 16) : null,
+        status: request.status,
+        nft_id: request.nft_id
+    });
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            // 日本時間から UTC に変換
+            const created = new Date(formData.created_at || new Date());
+            created.setHours(created.getHours() - 9);
+            
+            let approved: Date | null = null;
+            if (formData.approved_at) {
+                approved = new Date(formData.approved_at);
+                approved.setHours(approved.getHours() - 9);
+            }
+
+            // updateDataの型を明示的に指定し、approved_atの型を調整
+            const updateData: Omit<PurchaseRequest, 'approved_at'> & { approved_at: string | null } = {
+                ...request,
+                created_at: created.toISOString(),
+                approved_at: approved?.toISOString() || null,
+                status: formData.status,
+                nft_id: formData.nft_id
+            };
+
+            // onSaveに渡す前に型を調整
+            await onSave(updateData as PurchaseRequest);
+            onClose();
+        } catch (error) {
+            console.error('Error updating request:', error);
+            antMessage.error('更新に失敗しました');
+        }
+    };
+
+    // 日時を日本時間に変換して表示
+    const toLocalDateTime = (utcDate: string | null) => {
+        if (!utcDate) return '';
+        const date = new Date(utcDate);
+        date.setHours(date.getHours() + 9);
+        return date.toISOString().slice(0, 16);
+    };
+
+    return (
+        <div className={`fixed inset-0 bg-black bg-opacity-50 ${isOpen ? 'block' : 'hidden'}`}>
+            <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 p-6 rounded-lg">
+                <h3 className="text-xl text-white mb-4">購入申請を編集</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm text-gray-300">申請日時</label>
+                        <input
+                            type="datetime-local"
+                            value={toLocalDateTime(formData.created_at)}
+                            onChange={(e) => setFormData({...formData, created_at: e.target.value})}
+                            className="mt-1 block w-full rounded-md bg-gray-700 text-white"
+                        />
+                    </div>
+                    {formData.status === 'approved' && (
+                        <div>
+                            <label className="block text-sm text-gray-300">承認日時</label>
+                            <input
+                                type="datetime-local"
+                                value={toLocalDateTime(formData.approved_at)}
+                                onChange={(e) => setFormData({...formData, approved_at: e.target.value})}
+                                className="mt-1 block w-full rounded-md bg-gray-700 text-white"
+                            />
+                        </div>
+                    )}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">
+                            ステータス
+                        </label>
+                        <select
+                            value={formData.status}
+                            onChange={(e) => setFormData({
+                                ...formData, 
+                                status: e.target.value as 'pending' | 'approved' | 'rejected' | 'deactivated'
+                            })}
+                            className="mt-1 block w-full rounded-md bg-gray-700 text-white"
+                        >
+                            <option value="pending">保留中</option>
+                            <option value="approved">承認済み</option>
+                            <option value="rejected">却下</option>
+                            <option value="deactivated">無効化</option>
+                        </select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                        >
+                            キャンセル
+                        </button>
+                        <button
+                            type="submit"
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        >
+                            保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
 
 export default function PurchaseRequestsPage() {
     const router = useRouter()
@@ -84,10 +267,10 @@ export default function PurchaseRequestsPage() {
     const [deletingRequest, setDeletingRequest] = useState<PurchaseRequest | null>(null)
     const [message, setMessage] = useState<{ type: string; text: string } | null>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-    const [selectedRequest, setSelectedRequest] = useState<any>(null)
-    const [editDates, setEditDates] = useState({
+    const [selectedRequest, setSelectedRequest] = useState<PurchaseRequest | null>(null)
+    const [editDates, setEditDates] = useState<EditDates>({
         created_at: '',
-        approved_at: ''
+        approved_at: null
     })
     const [statusFilter, setStatusFilter] = useState<string>('all')
 
@@ -115,33 +298,41 @@ export default function PurchaseRequestsPage() {
                 .from('nft_purchase_requests')
                 .select(`
                     *,
-                    nft:nft_master (
+                    nft:nft_settings(
                         id,
                         name,
                         price,
                         daily_rate,
                         image_url
+                    ),
+                    user:users(
+                        id,
+                        name,
+                        email,
+                        display_id
                     )
                 `)
                 .order('created_at', { ascending: false })
 
             if (error) throw error
 
-            // 型を修正して変換
-            const formattedRequests = (data || []).map(request => ({
-                id: request.id,
-                user_id: request.user_id,
-                nft_id: request.nft_id,
-                status: request.status,
-                created_at: request.created_at,
-                approved_at: request.approved_at,
-                payment_method: request.payment_method,
-                nft_name: request.nft?.name || 'Unknown NFT',
-                nft_price: Number(request.nft?.price) || 0,
-                nft_daily_rate: Number(request.nft?.daily_rate) || 0,
-                nft_image_url: request.nft?.image_url
-            })) as PurchaseRequest[]  // 型アサーションを追加
-
+            console.log('Purchase requests:', data)
+            const formattedRequests: PurchaseRequest[] = data?.map(request => ({
+                ...request,
+                nft: {
+                    id: request.nft?.id || '',
+                    name: request.nft?.name || 'Unknown NFT',
+                    price: request.nft?.price || 0,
+                    daily_rate: request.nft?.daily_rate || 0,
+                    image_url: request.nft?.image_url
+                },
+                user: {
+                    id: request.user?.id || '',
+                    name: request.user?.name || 'Unknown User',
+                    email: request.user?.email || '',
+                    display_id: request.user?.display_id || ''
+                }
+            })) || []
             setRequests(formattedRequests)
         } catch (error: any) {
             console.error('Error fetching requests:', error)
@@ -152,6 +343,26 @@ export default function PurchaseRequestsPage() {
     }
 
     // 検索フィルター関数
+    const filterRequests = (requests: PurchaseRequest[], searchTerm: string) => {
+        let filtered = [...requests];
+        
+        if (searchTerm) {
+            const searchTermUpper = searchTerm.toUpperCase();
+            filtered = filtered.filter(request => {
+                // NFT名での検索
+                const nftNameMatch = request.nft?.name?.toUpperCase().includes(searchTermUpper) ?? false;
+                
+                // ユーザー情報での検索
+                const userNameMatch = request.user?.name?.toUpperCase().includes(searchTermUpper) ?? false;
+                const userEmailMatch = request.user?.email?.toUpperCase().includes(searchTermUpper) ?? false;
+                
+                return nftNameMatch || userNameMatch || userEmailMatch;
+            });
+        }
+        
+        return filtered;
+    };
+
     useEffect(() => {
         let filtered = requests;
         
@@ -162,98 +373,134 @@ export default function PurchaseRequestsPage() {
 
         // 検索語でフィルタリング
         if (searchTerm) {
-            const searchTermUpper = searchTerm.toUpperCase();
-            filtered = filtered.filter(request => 
-                request.nft_name?.toUpperCase().includes(searchTermUpper)
-            );
+            filtered = filterRequests(filtered, searchTerm);
         }
 
         setFilteredRequests(filtered);
     }, [requests, searchTerm, statusFilter]);
 
-    const handleApprove = async (requestId: string) => {
+    const handleApprove = async (id: string) => {
         try {
-            // JSTで現在時刻を取得
-            const jstNow = new Date();
-            jstNow.setHours(jstNow.getHours() - 9); // JSTからUTCに変換
-            const now = jstNow.toISOString();
-
+            // 承認ステータスの更新
             const { error } = await supabase
                 .from('nft_purchase_requests')
                 .update({
                     status: 'approved',
-                    approved_at: now,
-                    created_at: now
+                    approved_at: new Date().toISOString()
                 })
-                .eq('id', requestId);
+                .eq('id', id);
 
             if (error) throw error;
-            
-            console.log('Request approved:', {
-                requestId,
-                approved_at: now,
-                created_at: now
-            });
-            
-            fetchRequests();
+
+            // 承認済み購入データの取得（user_idも含める）
+            const { data: purchaseData } = await supabase
+                .from('nft_purchase_requests')
+                .select(`
+                    user_id,
+                    nft_settings:nft_settings!inner (
+                        id,
+                        price
+                    )
+                `)
+                .eq('id', id)
+                .single();
+
+            if (!purchaseData) return;
+
+            // 合計投資額を計算
+            const nftSettings = purchaseData.nft_settings;
+            const totalInvestment = Array.isArray(nftSettings) 
+                ? nftSettings.reduce((sum, nft) => sum + (Number(nft.price) || 0), 0)
+                : 0;
+
+            // ユーザーの投資額を更新
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({ investment_amount: totalInvestment })
+                .eq('id', purchaseData.user_id);
+
+            if (updateError) throw updateError;
+
+            await fetchRequests();
         } catch (error) {
             console.error('Error approving request:', error);
+            antMessage.error('承認に失敗しました');
         }
     };
 
-    const handleReject = async (request: PurchaseRequest) => {
+    const handleReject = async (id: string) => {
         try {
             const { error } = await supabase
                 .from('nft_purchase_requests')
-                .update({ status: 'rejected' })
-                .eq('id', request.id)
+                .update({
+                    status: 'rejected'
+                })
+                .eq('id', id);
 
-            if (error) throw error
-            fetchRequests()
-        } catch (error: any) {
-            console.error('Error rejecting request:', error)
-            setError(error.message)
+            if (error) throw error;
+            fetchRequests();
+        } catch (error) {
+            console.error('Error rejecting request:', error);
+            antMessage.error('却下に失敗しました');
         }
-    }
+    };
+
+    const handleDelete = async (id: string) => {
+        Modal.confirm({
+            title: '確認',
+            content: '本当に削除しますか？',
+            okText: '削除',
+            cancelText: 'キャンセル',
+            onOk: async () => {
+                try {
+                    const { error } = await supabase
+                        .from('nft_purchase_requests')
+                        .delete()
+                        .eq('id', id);
+
+                    if (error) throw error;
+                    fetchRequests();
+                    antMessage.success('リクエストを削除しました');
+                } catch (error) {
+                    console.error('Error deleting request:', error);
+                    antMessage.error('削除に失敗しました');
+                }
+            }
+        });
+    };
 
     // ユーザーの投資額を再計算する関数を追加
     const recalculateUserInvestment = async (userId: string) => {
         try {
-            console.log('Recalculating investment for user:', userId);
-
-            // 1. ユーザーの承認済み購入履歴をすべて取得
-            const { data: purchases, error: purchasesError } = await supabase
+            // 承認済みのNFT購入履歴から合計金額を計算
+            const { data: purchaseData, error: purchaseError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
-                    *,
-                    nfts:nft_settings (
+                    nft_settings:nft_settings!inner (
                         id,
-                        name,
                         price
                     )
                 `)
                 .eq('user_id', userId)
                 .eq('status', 'approved');
 
-            if (purchasesError) throw purchasesError;
-            console.log('Found approved purchases:', purchases);
+            if (purchaseError) throw purchaseError;
+            if (!purchaseData) return 0;
 
-            // 2. 総投資額を計算
-            const totalInvestment = purchases?.reduce((sum, purchase) => {
-                const price = purchase.nfts?.[0]?.price || 0;
-                console.log(`Adding NFT price: ${price} to sum: ${sum}`);
-                return sum + Number(price);
-            }, 0) || 0;
+            // 合計投資額を計算
+            const totalInvestment = purchaseData.reduce((sum, item) => {
+                const settings = item.nft_settings;
+                if (!Array.isArray(settings)) return sum;
+                
+                return sum + settings.reduce((priceSum, nft) => {
+                    return priceSum + (Number(nft.price) || 0);
+                }, 0);
+            }, 0);
 
-            console.log('Calculated total investment:', totalInvestment);
-
-            // 3. ユーザーの投資額を更新
+            // ユーザーの投資額を更新
             const { error: updateError } = await supabase
                 .from('users')
-                .update({
-                    investment_amount: totalInvestment,
-                    updated_at: new Date().toISOString()
-                })
+                .update({ investment_amount: totalInvestment })
                 .eq('id', userId);
 
             if (updateError) throw updateError;
@@ -265,111 +512,30 @@ export default function PurchaseRequestsPage() {
         }
     };
 
-    const handleSave = async (updatedRequest: PurchaseRequest) => {
+    const handleSave = async (updatedRequest: PurchaseRequest | null) => {
+        if (!updatedRequest) return;
         try {
-            console.log('Starting save process...', updatedRequest)
-
-            // 購入申請の更新
-            const { error: updateError } = await supabase
+            const { error } = await supabase
                 .from('nft_purchase_requests')
                 .update({
                     created_at: updatedRequest.created_at,
-                    approved_at: updatedRequest.status === 'approved' ? updatedRequest.created_at : null,
+                    approved_at: updatedRequest.approved_at,
                     status: updatedRequest.status,
                     nft_id: updatedRequest.nft_id
                 })
-                .eq('id', updatedRequest.id)
+                .eq('id', updatedRequest.id);
 
-            if (updateError) {
-                console.error('Purchase request update error:', updateError)
-                throw updateError
-            }
+            if (error) throw error;
 
-            // NFTの所有者情報の更新（承認済みの場合のみ）
-            if (updatedRequest.status === 'approved') {
-                const { error: nftError } = await supabase
-                    .from('nfts')
-                    .update({
-                        owner_id: updatedRequest.user_id,
-                        last_transferred_at: updatedRequest.created_at
-                    })
-                    .eq('id', updatedRequest.nft_id)
-
-                if (nftError) {
-                    console.error('NFT update error:', nftError)
-                    setError('NFTの所有者情報の更新に失敗しましたが、申請状態は更新されました')
-                }
-
-                // 投資額を再計算
-                await recalculateUserInvestment(updatedRequest.user_id)
-            }
-
-            setEditingRequest(null)
-            fetchRequests()
-            
-        } catch (error: any) {
-            console.error('Error updating request:', error)
-            setError('更新に失敗しました: ' + error.message)
-        }
-    }
-
-    // 削除処理の関数を追加
-    const handleDelete = async (request: PurchaseRequest) => {
-        if (!window.confirm('このNFTを削除してもよろしいですか？\n※この操作は取り消せません。')) {
-            return
-        }
-
-        setLoading(true)
-        try {
-            // NFTを削除
-            const { error: nftError } = await supabase
-                .from('nfts')
-                .delete()
-                .eq('id', request.nft_id)
-
-            if (nftError) throw nftError
-
-            // 購入履歴も削除
-            const { error: requestError } = await supabase
-                .from('nft_purchase_requests')
-                .delete()
-                .eq('id', request.id)
-
-            if (requestError) throw requestError
-
-            // 画面を更新
-            fetchRequests()
-            setError('NFTを削除しました')
+            fetchRequests(); // リストを更新
+            setIsEditModalOpen(false);
+            setSelectedRequest(null);
+            antMessage.success('リクエストを更新しました');
         } catch (error) {
-            console.error('Error deleting NFT:', error)
-            setError('NFTの削除に失敗しました')
-        } finally {
-            setLoading(false)
+            console.error('Error saving request:', error);
+            antMessage.error('保存に失敗しました');
         }
-    }
-
-    const formatRequest = (request: any): PurchaseRequest => {
-        const formatted: PurchaseRequest = {
-            id: request.id,
-            user_id: request.user_id,
-            nft_id: request.nft_id,
-            status: request.status,
-            created_at: request.created_at,
-            approved_at: request.approved_at,
-            payment_method: request.payment_method || 'bank_transfer',
-            nft_name: request.nfts?.name || 'Unknown NFT',
-            nft_price: request.nfts?.price || 0,
-            nft_daily_rate: request.nfts?.daily_rate || 0,
-            nft_image_url: request.nfts?.image_url
-        }
-
-        // オプショナルなプロパティを追加
-        if (request.profiles) {
-            formatted.user_display_name = request.profiles?.name || request.profiles?.email || 'Unknown User'
-        }
-
-        return formatted
-    }
+    };
 
     // 統計情報を取得する関数を修正
     const fetchStats = async () => {
@@ -408,25 +574,26 @@ export default function PurchaseRequestsPage() {
     };
 
     // 日付をJST（日本時間）で表示する関数を追加
-    const formatDateToJST = (dateString: string | null): string => {
+    const formatDateToJST = (dateString: string | null | undefined): string => {
         if (!dateString) return '-';
-        
         const date = new Date(dateString);
-        // UTCからJSTに変換（+9時間）
-        date.setHours(date.getHours() + 9);
-        
-        return date.toLocaleDateString('ja-JP', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            timeZone: 'Asia/Tokyo'
-        });
+        if (isNaN(date.getTime())) return '-';
+        return date.toLocaleString('ja-JP');
     };
 
     // 日付更新処理を修正
     const handleUpdateDates = async () => {
         try {
-            const updates: any = {};
+            // selectedRequestのnullチェック
+            if (!selectedRequest) {
+                console.error('No request selected');
+                return;
+            }
+
+            const updates: {
+                created_at?: string;
+                approved_at?: string | null;
+            } = {};
             
             // 入力された日付をUTCに変換
             if (editDates.created_at) {
@@ -454,9 +621,11 @@ export default function PurchaseRequestsPage() {
             });
             
             setIsEditModalOpen(false);
-            fetchRequests();
+            await fetchRequests();
+            antMessage.success('日付を更新しました');
         } catch (error) {
             console.error('Error updating dates:', error);
+            antMessage.error('日付の更新に失敗しました');
         }
     };
 
@@ -481,6 +650,31 @@ export default function PurchaseRequestsPage() {
             fetchRequests(); // リストを更新
         } catch (error) {
             console.error('Error deactivating NFT:', error);
+            antMessage.error('NFTの無効化に失敗しました');
+        }
+    };
+
+    const handleUpdate = async (id: string, data: any) => {
+        try {
+            const { error } = await supabase
+                .from('nft_purchase_requests')
+                .update({
+                    created_at: data.created_at,
+                    approved_at: data.approved_at,
+                    nft_id: data.nft_id,
+                    status: data.status
+                })
+                .eq('id', id);
+
+            if (error) throw error;
+            
+            // 更新成功後の処理
+            fetchRequests();  // リストを再取得
+            setEditingRequest(null);  // 編集モードを終了
+            antMessage.success('リクエストを更新しました');
+        } catch (error) {
+            console.error('Error updating request:', error);
+            antMessage.error('更新に失敗しました');
         }
     };
 
@@ -554,7 +748,10 @@ export default function PurchaseRequestsPage() {
                             <table className="min-w-full">
                                 <thead className="bg-gray-800">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                            ユーザー情報
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                                             NFT
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -578,11 +775,22 @@ export default function PurchaseRequestsPage() {
                                     {filteredRequests.map((request) => (
                                         <tr key={request.id} className="bg-gray-700">
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                                <div className="text-sm text-gray-300">{request.nft_name || 'Unknown NFT'}</div>
+                                                <div className="text-sm text-gray-300">
+                                                    <div>{request.user?.name || 'Unknown User'}</div>
+                                                    <div className="text-gray-400 text-xs">
+                                                        ID: {request.user?.display_id || 'N/A'}
+                                                    </div>
+                                                    <div className="text-gray-400 text-xs">
+                                                        {request.user?.email || 'No email'}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                                <div className="text-sm text-gray-300">{request.nft?.name || 'Unknown NFT'}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <div className="text-sm text-gray-300">
-                                                    ${request.nft_price?.toLocaleString() || '0'}
+                                                    ${request.nft?.price?.toLocaleString() || '0'}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
@@ -591,7 +799,7 @@ export default function PurchaseRequestsPage() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 {/* 承認日時（購入日時） */}
-                                                {formatDateToJST(request.approved_at)}
+                                                {formatDateToJST(request.approved_at || null)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                                 <span className={`px-2 py-1 rounded text-sm ${
@@ -618,7 +826,7 @@ export default function PurchaseRequestsPage() {
                                                                 承認
                                                             </button>
                                                             <button
-                                                                onClick={() => handleReject(request)}
+                                                                onClick={() => handleReject(request.id)}
                                                                 disabled={loading}
                                                                 className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50"
                                                             >
@@ -648,7 +856,7 @@ export default function PurchaseRequestsPage() {
                                                         </button>
                                                     )}
                                                     <button
-                                                        onClick={() => handleDelete(request)}
+                                                        onClick={() => handleDelete(request.id)}
                                                         disabled={loading}
                                                         className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50"
                                                     >
@@ -665,168 +873,18 @@ export default function PurchaseRequestsPage() {
                 </main>
             </div>
 
-            {isEditModalOpen && (
+            {selectedRequest && (
                 <EditRequestModal
                     request={selectedRequest}
+                    isOpen={isEditModalOpen}
                     onClose={() => {
-                        setIsEditModalOpen(false)
-                        setSelectedRequest(null)
+                        setIsEditModalOpen(false);
+                        setSelectedRequest(null);
                     }}
                     onSave={handleSave}
                     onUpdateDates={handleUpdateDates}
-                    editDates={editDates}
-                    setEditDates={setEditDates}
                 />
             )}
-        </div>
-    )
-}
-
-function EditRequestModal({ request, onClose, onSave, onUpdateDates, editDates, setEditDates }: {
-    request: PurchaseRequest
-    onClose: () => void
-    onSave: (updatedRequest: PurchaseRequest) => Promise<void>
-    onUpdateDates: () => Promise<void>
-    editDates: {
-        created_at: string
-        approved_at: string
-    }
-    setEditDates: React.Dispatch<React.SetStateAction<{
-        created_at: string
-        approved_at: string
-    }>>
-}) {
-    const [formData, setFormData] = useState({
-        created_at: request.created_at,
-        approved_at: request.approved_at || '',
-        status: request.status,
-        nft_id: request.nft_id
-    })
-    const [availableNFTs, setAvailableNFTs] = useState<NFTMaster[]>([])
-
-    // 利用可能なNFTを取得
-    useEffect(() => {
-        const fetchNFTs = async () => {
-            const { data: nfts, error } = await supabase
-                .from('nft_master')  // nft_masterテーブルから取得
-                .select(`
-                    id,
-                    name,
-                    price,
-                    daily_rate,
-                    image_url
-                `)
-                .order('name')
-
-            if (error) {
-                console.error('Error fetching NFTs:', error)
-                return
-            }
-
-            // 型アサーションを使用して安全に変換
-            const formattedNFTs = (nfts || []).map(nft => ({
-                id: nft.id,
-                name: nft.name,
-                price: nft.price,
-                daily_rate: nft.daily_rate,
-                image_url: nft.image_url
-            })) as NFTMaster[]
-
-            setAvailableNFTs(formattedNFTs)
-        }
-
-        fetchNFTs()
-    }, [])
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
-                <h3 className="text-xl font-bold mb-4 text-white">購入履歴の編集</h3>
-                
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1 text-white">
-                            申請日時
-                        </label>
-                        <input
-                            type="datetime-local"
-                            value={editDates.created_at.slice(0, 16)}
-                            onChange={(e) => setEditDates({
-                                ...editDates,
-                                created_at: e.target.value
-                            })}
-                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600"
-                        />
-                    </div>
-                    {request.status === 'approved' && (
-                        <div>
-                            <label className="block text-sm font-medium mb-1 text-white">
-                                承認日時（購入日時）
-                            </label>
-                            <input
-                                type="datetime-local"
-                                value={editDates.approved_at?.slice(0, 16) || ''}
-                                onChange={(e) => setEditDates({
-                                    ...editDates,
-                                    approved_at: e.target.value
-                                })}
-                                className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600"
-                            />
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-sm font-medium mb-1 text-white">NFT</label>
-                        <select
-                            value={formData.nft_id}
-                            onChange={e => setFormData({
-                                ...formData,
-                                nft_id: e.target.value
-                            })}
-                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        >
-                            {availableNFTs.map(nft => (
-                                <option key={nft.id} value={nft.id}>
-                                    {nft.name} ({nft.price.toLocaleString()} USDT)
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium mb-1 text-white">ステータス</label>
-                        <select
-                            value={formData.status}
-                            onChange={e => setFormData({
-                                ...formData,
-                                status: e.target.value as PurchaseRequest['status']
-                            })}
-                            className="w-full bg-gray-700 rounded p-2 text-white border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        >
-                            <option value="pending">処理待ち</option>
-                            <option value="approved">承認済み</option>
-                            <option value="rejected">却下</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div className="mt-6 flex justify-end space-x-2">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors"
-                    >
-                        キャンセル
-                    </button>
-                    <button
-                        onClick={() => {
-                            onSave({ ...request, ...formData })
-                            onUpdateDates()
-                        }}
-                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
-                    >
-                        保存
-                    </button>
-                </div>
-            </div>
         </div>
     )
 } 

@@ -21,7 +21,7 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false)
     const [user, setUser] = useState<UserMetadata | null>(null)
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         setLoading(true)
         setError(null)
@@ -51,6 +51,14 @@ export default function LoginPage() {
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleEmailChange = (e: React.BaseSyntheticEvent) => {
+        setEmail(e.target.value)
+    }
+
+    const handlePasswordChange = (e: React.BaseSyntheticEvent) => {
+        setPassword(e.target.value)
     }
 
     const getErrorMessage = (error: any) => {
@@ -89,9 +97,10 @@ export default function LoginPage() {
                             <input
                                 id="email"
                                 type="email"
+                                name="email"
                                 required
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                onChange={handleEmailChange}
                                 className="mt-2 appearance-none block w-full px-3 py-4 border border-gray-600 rounded-lg 
                                     bg-gray-700/50 text-white placeholder-gray-400 
                                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
@@ -112,7 +121,7 @@ export default function LoginPage() {
                                 type="password"
                                 required
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                onChange={handlePasswordChange}
                                 className="mt-2 appearance-none block w-full px-3 py-4 border border-gray-600 rounded-lg 
                                     bg-gray-700/50 text-white placeholder-gray-400 
                                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent

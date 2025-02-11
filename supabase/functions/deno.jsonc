@@ -1,0 +1,27 @@
+{
+  "tasks": {
+    "deploy": "supabase functions deploy create-user"
+  },
+  "compilerOptions": {
+    "allowJs": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "lib": ["deno.window", "deno.ns", "dom", "dom.iterable", "dom.asynciterable"],
+    "types": ["deno"]
+  },
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.21.0"
+  },
+  "fmt": {
+    "files": {
+      "include": ["**/*.ts"]
+    },
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80,
+      "indentWidth": 2,
+      "singleQuote": true
+    }
+  }
+} 

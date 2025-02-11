@@ -11,20 +11,20 @@ export default function AdminLoginPage() {
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         setLoading(true)
         setError('')
 
         try {
-            console.log('Attempting admin login with:', email) // デバッグ用
+            console.log('Attempting admin login with:', email)
 
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             })
 
-            console.log('Login response:', { data, error }) // デバッグ用
+            console.log('Login response:', { data, error })
 
             if (error) throw error
 
@@ -34,7 +34,7 @@ export default function AdminLoginPage() {
 
             router.push('/admin/dashboard')
         } catch (error: any) {
-            console.error('Login error:', error) // デバッグ用
+            console.error('Login error:', error)
             setError(
                 error.message === 'Invalid login credentials'
                     ? 'メールアドレスまたはパスワードが正しくありません'
@@ -43,6 +43,14 @@ export default function AdminLoginPage() {
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleEmailChange = (e: React.BaseSyntheticEvent) => {
+        setEmail(e.target.value)
+    }
+
+    const handlePasswordChange = (e: React.BaseSyntheticEvent) => {
+        setPassword(e.target.value)
     }
 
     return (
@@ -70,9 +78,10 @@ export default function AdminLoginPage() {
                             <input
                                 id="email"
                                 type="email"
+                                name="email"
                                 required
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                onChange={handleEmailChange}
                                 className="mt-2 appearance-none block w-full px-3 py-4 border border-gray-600 rounded-lg 
                                     bg-gray-700/50 text-white placeholder-gray-400 
                                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
@@ -93,7 +102,7 @@ export default function AdminLoginPage() {
                                 type="password"
                                 required
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                onChange={handlePasswordChange}
                                 className="mt-2 appearance-none block w-full px-3 py-4 border border-gray-600 rounded-lg 
                                     bg-gray-700/50 text-white placeholder-gray-400 
                                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent

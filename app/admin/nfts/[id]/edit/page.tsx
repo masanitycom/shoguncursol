@@ -15,6 +15,10 @@ interface NFTForm {
     is_special: boolean
 }
 
+interface HTMLInputEvent extends Event {
+    target: HTMLInputElement & EventTarget;
+}
+
 export default function EditNFTPage({ params }: { params: { id: string } }) {
     const router = useRouter()
     const { handleLogout } = useAuth()
@@ -101,34 +105,30 @@ export default function EditNFTPage({ params }: { params: { id: string } }) {
     }
 
     const handleSpecialChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const isSpecial = e.target.checked
+        const checkbox = e.target as unknown as { checked: boolean }
+        const isSpecial = checkbox.checked
         console.log('Special change:', isSpecial)
         
         // 特例NFTに切り替えた時は、デフォルトで100USDTを選択
-        const newPrice = isSpecial ? 100 : 300
-        const newDailyRate = getDefaultDailyRate(newPrice, isSpecial)
-        
-        console.log('New special price:', {
-            isSpecial,
-            newPrice,
-            newDailyRate
-        })
-        
-        setFormData(prev => {
-            const updated = {
+        if (isSpecial) {
+            setFormData(prev => ({
                 ...prev,
-                is_special: isSpecial,
-                price: newPrice,
-                daily_rate: newDailyRate
-            }
-            console.log('Updated form data:', updated)
-            return updated
-        })
+                price: 100,
+                daily_rate: getDefaultDailyRate(100, true)
+            }))
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                price: 300,
+                daily_rate: getDefaultDailyRate(300, false)
+            }))
+        }
     }
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setImageFile(e.target.files[0])
+        const input = e.target as unknown as { files: File[] | null }
+        if (input.files && input.files[0]) {
+            setImageFile(input.files[0])
         }
     }
 

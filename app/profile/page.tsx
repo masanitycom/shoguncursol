@@ -16,6 +16,21 @@ interface UserProfile {
     wallet_type: string
 }
 
+interface CustomWindow extends Window {
+    open(url?: string | URL, target?: string, features?: string): Window | null;
+}
+
+interface Clipboard {
+    writeText(text: string): Promise<void>;
+}
+
+interface CustomNavigator {
+    clipboard: Clipboard;
+}
+
+declare const window: CustomWindow & typeof globalThis;
+declare const navigator: CustomNavigator;
+
 export default function ProfilePage() {
     const router = useRouter()
     const { handleLogout } = useAuth()
@@ -41,6 +56,19 @@ export default function ProfilePage() {
     useEffect(() => {
         checkAuth()
     }, [])
+
+    useEffect(() => {
+        const subscription = supabase
+            .channel('profile_updates')
+            .on('broadcast', { event: 'profile_updated' }, (payload) => {
+                checkAuth(); // データを再取得
+            })
+            .subscribe();
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, []);
 
     const checkAuth = async () => {
         try {
@@ -96,7 +124,7 @@ export default function ProfilePage() {
         setSuccess(null)
 
         try {
-            // メールアドレスの更新
+            // 1. メールアドレスの更新（必要な場合）
             if (editForm.email !== user?.email) {
                 const { error: authError } = await supabase.auth.updateUser({
                     email: editForm.email
@@ -104,18 +132,51 @@ export default function ProfilePage() {
                 if (authError) throw authError
             }
 
-            // プロフィール情報の更新
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .update({
-                    name: editForm.name,
-                    email: editForm.email,
-                    wallet_address: editForm.wallet_address,
-                    wallet_type: editForm.wallet_type
-                })
-                .eq('id', user?.id)
+            // 2. 共通の更新データを作成
+            const updateData = {
+                name: editForm.name,
+                email: editForm.email,
+                wallet_address: editForm.wallet_address,
+                wallet_type: editForm.wallet_type
+            };
 
-            if (profileError) throw profileError
+            // 3. プロフィールとユーザー情報を同時に更新
+            const updates = [];
+
+            // profiles テーブルの更新
+            updates.push(
+                supabase
+                    .from('profiles')
+                    .update(updateData)
+                    .eq('id', user?.id)
+            );
+
+            // users テーブルの更新
+            updates.push(
+                supabase
+                    .from('users')
+                    .update(updateData)
+                    .eq('id', user?.id)
+            );
+
+            // 4. 全ての更新を実行
+            const results = await Promise.all(updates);
+
+            // エラーチェック
+            results.forEach((result, index) => {
+                if (result.error) {
+                    throw new Error(`Update failed for table ${index === 0 ? 'profiles' : 'users'}: ${result.error.message}`);
+                }
+            });
+
+            // 5. リアルタイム更新のトリガー
+            supabase
+                .channel('profile_updates')
+                .send({
+                    type: 'broadcast',
+                    event: 'profile_updated',
+                    payload: { userId: user?.id }
+                });
 
             setSuccess('プロフィールを更新しました')
             checkAuth()
@@ -161,11 +222,34 @@ export default function ProfilePage() {
 
     // LINEでシェア
     const shareToLINE = () => {
+        if (typeof window === 'undefined') return;
+
         const url = `https://line.me/R/msg/text/?${encodeURIComponent(
             `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(user?.id || '')}`
-        )}`
-        window.open(url, '_blank')
-    }
+        )}`;
+        window.open(url, '_blank');
+    };
+
+    const handleShare = () => {
+        if (typeof window === 'undefined') return;
+
+        const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(user?.id || '')}`
+        )}`;
+
+        window.open(url, '_blank');
+    };
+
+    const handleCopyId = async () => {
+        if (typeof window === 'undefined') return;
+        
+        try {
+            await navigator.clipboard.writeText(user?.id || '');
+            setSuccess('IDをコピーしました');
+        } catch (error) {
+            setError('IDのコピーに失敗しました');
+        }
+    };
 
     if (loading) {
         return (
@@ -364,10 +448,7 @@ export default function ProfilePage() {
                                                 {user?.id}
                                             </p>
                                             <button
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(user?.id || '')
-                                                    setSuccess('IDをコピーしました')
-                                                }}
+                                                onClick={handleCopyId}
                                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
                                             >
                                                 IDをコピー

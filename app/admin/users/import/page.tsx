@@ -18,16 +18,20 @@ interface CSVRow {
 }
 
 // メタデータを削除
-export default function Page() {
+export default function ImportUsersPage() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.[0]) return;
+        const input = e.currentTarget as unknown as { files: File[] | null }
+        if (!input.files?.[0]) return;
         setLoading(true);
 
         try {
-            const file = e.target.files[0];
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
             
             Papa.parse<CSVRow>(file, {
                 header: true,
@@ -60,26 +64,17 @@ export default function Page() {
                         });
                     } catch (error: any) {
                         console.error('Import error:', error);
-                        setResult({
-                            success: false,
-                            error: error.message
-                        });
+                        setError('インポートに失敗しました');
                     }
                 },
                 error: (error: Error, file: File) => {
                     console.error('CSV parse error:', error);
-                    setResult({
-                        success: false,
-                        error: error.message
-                    });
+                    setError(error.message);
                 }
             });
         } catch (error: any) {
             console.error('File read error:', error);
-            setResult({
-                success: false,
-                error: error.message
-            });
+            setError('ファイルの読み込みに失敗しました');
         } finally {
             setLoading(false);
         }
@@ -115,7 +110,7 @@ export default function Page() {
                     {result.success ? (
                         <p>インポート完了: {result.total}件</p>
                     ) : (
-                        <p>エラー: {result.error}</p>
+                        <p>エラー: {error}</p>
                     )}
                 </div>
             )}

@@ -7,6 +7,7 @@ import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '@/lib/auth'
+import { Button, Space, Table, Modal, message as antMessage } from 'antd'
 
 interface NFT {
     id: string
@@ -57,20 +58,28 @@ export default function NFTManagementPage() {
     }
 
     const handleDelete = async (id: string) => {
-        if (!confirm('このNFTを削除してもよろしいですか？')) return
+        Modal.confirm({
+            title: '確認',
+            content: 'このNFTを削除してもよろしいですか？',
+            okText: '削除',
+            cancelText: 'キャンセル',
+            onOk: async () => {
+                try {
+                    const { error } = await supabase
+                        .from('nft_master')
+                        .delete()
+                        .eq('id', id)
 
-        try {
-            const { error } = await supabase
-                .from('nft_master')
-                .delete()
-                .eq('id', id)
+                    if (error) throw error
 
-            if (error) throw error
-            fetchNFTs()
-        } catch (error: any) {
-            console.error('Error deleting NFT:', error)
-            setError(error.message)
-        }
+                    antMessage.success('NFTを削除しました')
+                    fetchNFTs() // リストを再取得
+                } catch (error) {
+                    console.error('Delete error:', error)
+                    antMessage.error('NFTの削除に失敗しました')
+                }
+            }
+        })
     }
 
     if (!user) return null

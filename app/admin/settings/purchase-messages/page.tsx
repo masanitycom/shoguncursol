@@ -142,15 +142,18 @@ export default function PurchaseMessagesPage() {
                                             <label className="block text-gray-300 mb-2">メッセージ本文</label>
                                             <textarea
                                                 value={message.message}
-                                                onChange={(e) => setMessages(prev =>
-                                                    prev.map(m =>
-                                                        m.id === message.id
-                                                            ? { ...m, message: e.target.value }
-                                                            : m
+                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                                                    const textarea = e.currentTarget as unknown as { value: string }
+                                                    setMessages(prev =>
+                                                        prev.map(m =>
+                                                            m.id === message.id
+                                                                ? { ...m, message: textarea.value }
+                                                                : m
+                                                        )
                                                     )
-                                                )}
+                                                }}
                                                 rows={4}
-                                                className="w-full bg-gray-700 text-white px-4 py-2 rounded"
+                                                className="w-full h-32 border rounded px-3 py-2"
                                             />
                                         </div>
 

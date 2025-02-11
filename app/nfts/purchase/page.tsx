@@ -14,9 +14,61 @@ interface NFT {
     daily_rate: number
     description?: string
     image_url?: string
-    nft_type: string
+    special: boolean
     status: string
 }
+
+interface NFTPurchaseRequest {
+    user_id: string;
+    nft_id: string;
+    status: 'pending' | 'approved' | 'rejected';
+    payment_method: 'usdt' | 'bank_transfer';  // 許可された支払い方法
+    created_at: string;
+}
+
+const nftOptions = [
+    { 
+        id: 'ashigaru', 
+        name: '足軽NFT', 
+        price: 3000,
+        description: '足軽レベルのNFT',
+        image: '/images/nfts/ashigaru.jpg',
+        level: 'ASHIGARU'
+    },
+    { 
+        id: 'samurai', 
+        name: '侍NFT', 
+        price: 10000,
+        description: '侍レベルのNFT',
+        image: '/images/nfts/samurai.jpg',
+        level: 'SAMURAI'
+    },
+    { 
+        id: 'daimyo', 
+        name: '大名NFT', 
+        price: 30000,
+        description: '大名レベルのNFT',
+        image: '/images/nfts/daimyo.jpg',
+        level: 'DAIMYO'
+    },
+    { 
+        id: 'shogun', 
+        name: '将軍NFT', 
+        price: 100000,
+        description: '将軍レベルのNFT',
+        image: '/images/nfts/shogun.jpg',
+        level: 'SHOGUN'
+    }
+];
+
+// 必要なNFTを判定する関数
+const getRequiredNFTs = (currentLevel: string, targetLevel: string): string[] => {
+    const levels = ['NORMAL', 'ASHIGARU', 'SAMURAI', 'DAIMYO', 'SHOGUN'];
+    const currentIndex = levels.indexOf(currentLevel.toUpperCase());
+    const targetIndex = levels.indexOf(targetLevel);
+    
+    return levels.slice(currentIndex + 1, targetIndex + 1);
+};
 
 export default function NFTPurchasePage() {
     const router = useRouter()
@@ -28,6 +80,8 @@ export default function NFTPurchasePage() {
     const [error, setError] = useState<string | null>(null)
     const [paymentMessage, setPaymentMessage] = useState<string>('')
     const [loading, setLoading] = useState(true)
+    const [message, setMessage] = useState<string>('')
+    const [showSuccessModal, setShowSuccessModal] = useState(false)
 
     useEffect(() => {
         checkAuth()
@@ -58,6 +112,7 @@ export default function NFTPurchasePage() {
 
     const fetchNFTs = async () => {
         try {
+            // 重複を除外して通常のNFTのみを取得
             const { data: nfts, error } = await supabase
                 .from('nft_settings')
                 .select(`
@@ -66,35 +121,30 @@ export default function NFTPurchasePage() {
                     price,
                     daily_rate,
                     image_url,
+                    description,
                     status
                 `)
                 .eq('status', 'active')
+                .not('price', 'in', '(100,200,600,1177,1300,1500,2000,6600,8000)')  // 文字列として渡す
                 .order('price')
 
             if (error) throw error
 
-            const { data: nftTypes, error: nftError } = await supabase
-                .from('nfts')
-                .select('id, description, nft_type')
-                .eq('nft_type', 'normal')
+            // ユニークな価格のNFTのみを取得
+            const uniqueNfts = nfts.filter((nft, index, self) =>
+                index === self.findIndex((t) => t.price === nft.price)
+            );
 
-            if (nftError) throw nftError
-
-            const formattedNfts = nfts
-                .filter(nft => nftTypes.some(type => type.id === nft.id))
-                .map(nft => {
-                    const nftData = nftTypes.find(type => type.id === nft.id)
-                    return {
-                        id: nft.id,
-                        name: nft.name,
-                        price: Number(nft.price),
-                        daily_rate: Number(nft.daily_rate),
-                        description: nftData?.description,
-                        image_url: nft.image_url ?? undefined,
-                        nft_type: nftData?.nft_type ?? 'normal',
-                        status: nft.status
-                    }
-                })
+            const formattedNfts = uniqueNfts.map(nft => ({
+                id: nft.id,
+                name: nft.name,
+                price: Number(nft.price),
+                daily_rate: Number(nft.daily_rate),
+                description: nft.description,
+                image_url: nft.image_url ?? undefined,
+                special: false,
+                status: nft.status
+            }))
 
             setNfts(formattedNfts)
         } catch (error: any) {
@@ -122,14 +172,14 @@ export default function NFTPurchasePage() {
     }
 
     const handlePurchase = async (e: React.FormEvent) => {
-        e.preventDefault()
+        e.preventDefault();
         if (!selectedNFT) {
-            setError('NFTを選択してください')
-            return
+            setError('NFTを選択してください');
+            return;
         }
 
-        setLoading(true)
-        setError(null)
+        setLoading(true);
+        setError(null);
 
         try {
             const { error: insertError } = await supabase
@@ -137,19 +187,20 @@ export default function NFTPurchasePage() {
                 .insert({
                     user_id: user.id,
                     nft_id: selectedNFT,
-                    status: 'pending'
-                })
+                    status: 'pending',
+                    payment_method: 'usdt'
+                });
 
-            if (insertError) throw insertError
+            if (insertError) throw insertError;
 
-            setShowPaymentModal(true)
+            setShowPaymentModal(true);
         } catch (error: any) {
-            console.error('Error submitting purchase:', error)
-            setError('購入申請に失敗しました。もう一度お試しください。')
+            console.error('Error submitting purchase:', error);
+            setError('購入申請に失敗しました。もう一度お試しください。');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     if (loading) return <div>Loading...</div>
     if (error) return <div>{error}</div>
@@ -176,7 +227,7 @@ export default function NFTPurchasePage() {
                                 <option value="">選択してください</option>
                                 {nfts.map((nft) => (
                                     <option key={nft.id} value={nft.id}>
-                                        {nft.name} - {nft.price} USDT (日利: {(nft.daily_rate * 100).toFixed(2)}%)
+                                        {nft.name} - {nft.price.toLocaleString()} USDT (日利: {(nft.daily_rate * 100).toFixed(2)}%)
                                     </option>
                                 ))}
                             </select>
@@ -184,10 +235,10 @@ export default function NFTPurchasePage() {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={!selectedNFT || loading}
                             className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
                         >
-                            購入する
+                            {loading ? '処理中...' : '購入する'}
                         </button>
                     </form>
 
@@ -196,6 +247,24 @@ export default function NFTPurchasePage() {
                             <div className="bg-gray-800 rounded-lg max-w-2xl w-full p-6">
                                 <div className="text-white whitespace-pre-wrap">
                                     {paymentMessage}
+                                </div>
+                                <div className="flex justify-end mt-6">
+                                    <button
+                                        onClick={() => router.push('/dashboard')}
+                                        className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                                    >
+                                        確認
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showSuccessModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                            <div className="bg-gray-800 rounded-lg max-w-2xl w-full p-6">
+                                <div className="text-white whitespace-pre-wrap">
+                                    {message}
                                 </div>
                                 <div className="flex justify-end mt-6">
                                     <button

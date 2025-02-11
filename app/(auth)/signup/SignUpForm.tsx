@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -10,14 +10,14 @@ type WalletType = 'EVO' | 'その他' | ''
 
 interface SignUpFormData {
     name: string
-    username: string
+    display_id: string
     email: string
     password: string
     confirmPassword: string
     phone: string
     referrer_id: string
     wallet_address?: string
-    wallet_type: WalletType
+    wallet_type?: WalletType
 }
 
 interface Props {
@@ -33,6 +33,10 @@ interface ValidationState {
     }
 }
 
+interface ValidationErrors {
+    [key: string]: string;
+}
+
 export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -40,7 +44,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     const [error, setError] = useState<string | null>(null)
     const [formData, setFormData] = useState<SignUpFormData>({
         name: '',
-        username: '',
+        display_id: '',
         email: '',
         password: '',
         confirmPassword: '',
@@ -63,7 +67,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     // バリデーションルールの修正
     const VALIDATION_PATTERNS = {
         name: /^[ァ-ヶー0-9A-Za-z]+$/,  // カタカナと英数字のみ
-        username: /^[a-zA-Z0-9]{6,}$/,        // 半角英数6文字以上
+        display_id: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/,  // 半角英数字混在で6文字以上
         phone: /^[0-9]{10,11}$/,            // 数字10-11桁
         referrer_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,  // UUID形式
         wallet_address: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
@@ -72,7 +76,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     // エラーメッセージの定義
     const VALIDATION_MESSAGES = {
         name: 'カタカナと英数字のみで入力してください（スペース不可）',
-        username: 'ユーザーIDは半角英数字6文字以上で入力してください',
+        display_id: 'ユーザーIDは半角英数字を混ぜて6文字以上で入力してください',
         phone: '電話番号は10桁または11桁の数字で入力してください',
         referrer_id: '紹介者IDはUUID形式で入力してください',
         wallet_address: '有効なBEP20のUSDTアドレスを入力してください'
@@ -81,7 +85,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     // バリデーション状態の管理を修正
     const [validation, setValidation] = useState<ValidationState>({
         name: { isValid: true, message: '', touched: false },
-        username: { isValid: true, message: '', touched: false },
+        display_id: { isValid: true, message: '', touched: false },
         email: { isValid: true, message: '', touched: false },
         password: { isValid: true, message: '', touched: false },
         confirmPassword: { isValid: true, message: '', touched: false },
@@ -92,7 +96,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     })
 
     // フィールドの検証を行う関数
-    const validateField = (name: string, value: string) => {
+    const validateField = useCallback((name: keyof SignUpFormData, value: string) => {
         let isValid = true
         let message = ''
 
@@ -101,9 +105,9 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                 isValid = VALIDATION_PATTERNS.name.test(value)
                 message = isValid ? '' : VALIDATION_MESSAGES.name
                 break
-            case 'username':
-                isValid = VALIDATION_PATTERNS.username.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.username
+            case 'display_id':
+                isValid = VALIDATION_PATTERNS.display_id.test(value)
+                message = isValid ? '' : VALIDATION_MESSAGES.display_id
                 break
             case 'phone':
                 isValid = VALIDATION_PATTERNS.phone.test(value)
@@ -114,7 +118,7 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                 message = isValid ? '' : VALIDATION_MESSAGES.referrer_id
                 break
             case 'wallet_address':
-                if (value) { // 任意項目なので、値がある場合のみ検証
+                if (value) {
                     isValid = VALIDATION_PATTERNS.wallet_address.test(value)
                     message = isValid ? '' : VALIDATION_MESSAGES.wallet_address
                 }
@@ -135,96 +139,78 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         }))
 
         return isValid
-    }
+    }, [formData.password])
 
     // 入力ハンドラーを更新
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target
+        const target = e.target as HTMLInputElement | HTMLSelectElement
+        const name = target.name as keyof SignUpFormData
+        const value = target.value
         setFormData(prev => ({ ...prev, [name]: value }))
         validateField(name, value)
     }
 
     // フィールドがフォーカスを失った時の処理
     const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target
+        const target = e.target as HTMLInputElement | HTMLSelectElement
+        const name = target.name as keyof SignUpFormData
+        const value = target.value
         validateField(name, value)
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError(null)
-
-        // カスタムバリデーション
-        if (!validation.name.isValid) {
-            setError(validation.name.message)
-            return
-        }
-        if (!validation.username.isValid) {
-            setError(validation.username.message)
-            return
-        }
-        if (!validation.phone.isValid) {
-            setError(validation.phone.message)
-            return
-        }
-        if (!validation.referrer_id.isValid) {
-            setError(validation.referrer_id.message)
-            return
-        }
-        if (formData.wallet_address && !validation.wallet_address.isValid) {
-            setError(validation.wallet_address.message)
-            return
-        }
-
         setLoading(true)
 
         try {
             if (formData.password !== formData.confirmPassword) {
-                throw new Error('パスワードが一致しません')
+                setError('パスワードが一致しません')
+                return
             }
 
-            // Supabaseで新規ユーザー登録
-            const { data: authData, error: authError } = await supabase.auth.signUp({
+            const { data: authUser, error: authError } = await supabase.auth.signUp({
                 email: formData.email,
                 password: formData.password,
                 options: {
                     data: {
                         name: formData.name,
-                        username: formData.username,
+                        name_kana: formData.name,
+                        display_id: formData.display_id,
                         phone: formData.phone,
                         referrer_id: formData.referrer_id,
-                        wallet_address: formData.wallet_address,
-                        wallet_type: formData.wallet_type
+                        wallet_address: formData.wallet_address || null,
+                        wallet_type: formData.wallet_type || null
                     }
                 }
             })
 
             if (authError) throw authError
 
-            // ユーザープロフィールを作成
-            if (authData.user) {
-                const { error: profileError } = await supabase
-                    .from('users')
-                    .insert([{
-                        id: authData.user.id,
-                        name: formData.name,
-                        username: formData.username,
-                        email: formData.email,
-                        phone: formData.phone,
-                        referrer_id: formData.referrer_id,
-                        wallet_address: formData.wallet_address,
-                        wallet_type: formData.wallet_type,
-                        active: true,
-                        investment_amount: 0,
-                        level: 'normal'
-                    }])
+            if (!authUser.user?.id) {
+                setError('ユーザー登録に失敗しました')
+                return
+            }
 
-                if (profileError) throw profileError
+            // publicプロフィールの確認
+            const { data: publicUser } = await supabase
+                .from('users')
+                .select()
+                .eq('id', authUser.user.id)
+                .single()
+
+            if (!publicUser) {
+                // ユーザーIDが確実に存在する場合のみ削除を実行
+                await supabase.auth.admin.deleteUser(authUser.user.id)
+            } else {
+                setError('このメールアドレスは既に登録されています')
+                return
             }
 
             router.push('/signup/complete')
         } catch (error: any) {
-            setError(error.message)
+            console.error('Error during signup:', error)
+            setError('登録中にエラーが発生しました')
         } finally {
             setLoading(false)
         }
@@ -302,26 +288,26 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                             <label className={labelClassName}>
                                 ユーザーID
                                 <RequiredBadge />
-                                <span className="text-xs text-gray-400 ml-2">半角英数字のみ</span>
+                                <span className="text-xs text-gray-400 ml-2">半角英数字を混ぜて6文字以上</span>
                             </label>
                             <input
                                 type="text"
-                                name="username"
-                                value={formData.username}
+                                name="display_id"
+                                value={formData.display_id}
                                 onChange={handleChange}
                                 onBlur={handleBlur}
                                 required
-                                pattern="^[a-zA-Z0-9]+$"
+                                pattern="^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$"
                                 placeholder="例：user123"
                                 className={`${inputClassName} ${
-                                    validation.username.touched && !validation.username.isValid 
+                                    validation.display_id.touched && !validation.display_id.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
                             />
-                            {validation.username.touched && !validation.username.isValid && (
+                            {validation.display_id.touched && !validation.display_id.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
-                                    {validation.username.message}
+                                    {validation.display_id.message}
                                 </p>
                             )}
                         </div>
@@ -492,14 +478,13 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                         <div>
                             <label className={labelClassName}>
                                 ウォレットの種類
-                                <RequiredBadge />
+                                <OptionalBadge />
                             </label>
                             <select
                                 name="wallet_type"
                                 value={formData.wallet_type}
                                 onChange={handleChange}
                                 onBlur={handleBlur}
-                                required
                                 className={inputClassName}
                             >
                                 <option value="">選択してください</option>

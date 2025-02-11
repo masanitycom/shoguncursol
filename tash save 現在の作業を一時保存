@@ -1,0 +1,179 @@
+[33mcommit c833c1b63c60ee89f6facd439adbd94ec9b85e13[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Wed Feb 5 16:12:36 2025 +0900
+
+    30日の待機期間の設定
+
+[33mcommit 1dbfa50c81b157321d38f3cfdd04cb5f36220a60[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Tue Feb 4 22:08:16 2025 +0900
+
+    紹介リンクの修正
+
+[33mcommit e9a4b17e2ab952f97578f01a707750bbd4103ba6[m[33m ([m[1;32mtemp-recovery[m[33m)[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Tue Feb 4 20:29:49 2025 +0900
+
+    ビルドエラーの解消、netlifyにデプロイ開始
+
+[33mcommit fc1ce58e5dfe8c30198d685bc56125c5f450c7cd[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Tue Feb 4 14:39:17 2025 +0900
+
+    netlifyへのデプロイ時に修正時のエラー解消netlifyデプロイにはまだエラー中
+
+[33mcommit 322674ddbc819b62565c2a6b631b9cf83d30288f[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Tue Feb 4 05:37:06 2025 +0900
+
+    ユーザー側と管理側のNFTが合わない件データベース修正、承認出来ない問題解消
+
+[33mcommit 3bdf2409e2918076822d68614fe44f02b59253fb[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Tue Feb 4 03:19:11 2025 +0900
+
+    ユーザープロフィール編集機能修正
+
+[33mcommit d55dc2221d2f5d02699849a6414ec95709eec67b[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Mon Feb 3 21:40:03 2025 +0900
+
+    NFT承認・未承認数のダッシュボード表示実装
+
+[33mcommit f4aa4363623123cf0ece204611dc0d3468ba611d[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Mon Feb 3 21:10:23 2025 +0900
+
+    NFTの承認エラーの修正
+
+[33mcommit 07de65d9b8a9726ce2b5210fa4709394cd92037f[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Mon Feb 3 03:09:19 2025 +0900
+
+    NFT購入日、承認日の修正
+
+[33mcommit 8b120fcc426a2f857a87b0b8a96adedf62d71a7d[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Mon Feb 3 02:56:18 2025 +0900
+
+    NFT承認日とユーザー側購入日を一致させる、NFT日利の間違い修正
+
+[33mcommit 400f162e10c2a6aaafe02fd59b21be422868b781[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Mon Feb 3 00:54:26 2025 +0900
+
+    テストユーザーログイン時のエラー削除
+
+[33mcommit da8b056ced3fd1344c045752781ec7e88efe62a0[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Mon Feb 3 00:40:36 2025 +0900
+
+    テストユーザー追加、社長、オジー
+
+[33mcommit 3baa8c9daca0a5c5cfc46d464c20a0055fa0489c[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Sat Feb 1 06:42:56 2025 +0900
+
+    ユーザーダッシュボードに保留中の金額表示
+
+[33mcommit 506877d8da1ea8aa92a53c01dd91440f20679b0b[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Sat Feb 1 06:10:48 2025 +0900
+
+    NFT削除機能実装
+
+[33mcommit f1cf5c7fb8cfc4dfcf732469ff00604005dfbf25[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Sat Feb 1 05:28:40 2025 +0900
+
+    NFTの日利設定、NFT購入申請者の管理者承認実装
+
+[33mcommit 5e599dc8f8f2287435d37763a42d0c2a6d73b9e7[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Sat Feb 1 02:34:31 2025 +0900
+
+    NFTの購入日の編集機能の実装
+
+[33mcommit 057e5ab71644bac6fe7ef8c6f0a2d7cecf4e1066[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Sat Feb 1 00:33:59 2025 +0900
+
+    新規登録画面復元、紹介コード実装、登録フォームバリデーション追加
+
+[33mcommit c6b645540fa278b3412ba7e9cc6ea735999a6e13[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Sat Feb 1 00:09:20 2025 +0900
+
+    プロフィール編集画面にQRコードとLINEで送るのリンクを実装
+
+[33mcommit b12482470271039f5ea66df6d05948884ababed4[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 23:47:44 2025 +0900
+
+    プロフィール編集追加
+
+[33mcommit 803b4a25772b7389613c2e02d2e9e06e9cf3fbcd[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 23:42:46 2025 +0900
+
+    日利部分のデザイン変更
+
+[33mcommit a1130708b7dddb24e3d9bd6e6d9e1cbef3d62bd1[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 23:40:58 2025 +0900
+
+    データベースからのNFT画像取得、日利の実装
+
+[33mcommit 6b6b14eddce760fa24cae865a4e037b3e2a8a643[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 23:07:23 2025 +0900
+
+    報酬計算復習
+
+[33mcommit 99cdfed1f4364f4cd87c8e1e2fcf37e41a8d20af[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 22:21:31 2025 +0900
+
+    総投資額欄をNFTと共通にする
+
+[33mcommit d0d42d876d67327ff220aabc70e5909f74deb052[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 22:16:57 2025 +0900
+
+    所有NFT一覧にNFTを表示
+
+[33mcommit ac93ceeb4bb4d76649775c020b3d8d9d7f995a6d[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 22:08:18 2025 +0900
+
+    ユーザーダッシュボードのクリックリンクにアイコン追加
+
+[33mcommit b991f84b293f0b17cc1dbadec7cc8853f84e54e7[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 22:02:17 2025 +0900
+
+    nft.priceをuserNft.nft.priceに変更
+
+[33mcommit 302828e22a3fb51efdd60200aac47325a97888d2[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 21:56:04 2025 +0900
+
+    ユーザーダッシュボードのレイアウト修正
+
+[33mcommit 7a97e9d758b8db61b47bca65b6523dbe9119cece[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 21:43:10 2025 +0900
+
+    fix: ビルドエラーの修正
+
+[33mcommit 4c03b246b4b0c0a772a288f37bb1c298e83c3be5[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Fri Jan 31 21:18:18 2025 +0900
+
+    feat: ダッシュボードのレイアウトを更新
+
+[33mcommit 02129a9e8c8f6ca071f5c106ea4f222d6881873c[m
+Author: masanitycom <masataka.tak@gmail.com>
+Date:   Thu Jan 30 14:20:02 2025 +0900
+
+    Initial commit from Create Next App

@@ -6,6 +6,26 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useAuth } from '@/lib/auth'
+import { message as antMessage } from 'antd'
+
+declare const window: Window & typeof globalThis
+declare const document: Document
+declare const navigator: Navigator
+
+interface Document {
+    createElement(tagName: 'a'): HTMLAnchorElement;
+    createElement(tagName: string): HTMLElement;
+    body: HTMLElement & {
+        appendChild(node: HTMLElement): void;
+        removeChild(node: HTMLElement): void;
+    };
+}
+
+interface Navigator {
+    clipboard: {
+        writeText(text: string): Promise<void>;
+    };
+}
 
 interface RewardClaim {
     id: string
@@ -102,13 +122,27 @@ export default function ManageRewardsPage() {
             .map(row => row.join(','))
             .join('\n')
 
-        const blob = new Blob([csvContent], { type: 'text/csv' })
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `reward-claims-${new Date().toISOString().split('T')[0]}.csv`
-        a.click()
-        window.URL.revokeObjectURL(url)
+        downloadCSV(csvContent)
+    }
+
+    const downloadCSV = (csvContent: string) => {
+        // Next.js環境でのwindowチェック
+        if (typeof window === 'undefined') return
+
+        try {
+            const blob = new Blob([csvContent], { type: 'text/csv' })
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `reward-claims-${new Date().toISOString().split('T')[0]}.csv`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            window.URL.revokeObjectURL(url)
+        } catch (error) {
+            console.error('Download error:', error)
+            antMessage.error('CSVのダウンロードに失敗しました')
+        }
     }
 
     if (!user) return null
@@ -167,7 +201,15 @@ export default function ManageRewardsPage() {
                                             <td className="px-6 py-4">{claim.final_amount} USDT</td>
                                             <td className="px-6 py-4">
                                                 <button
-                                                    onClick={() => navigator.clipboard.writeText(claim.wallet_address)}
+                                                    onClick={async () => {
+                                                        try {
+                                                            await navigator.clipboard.writeText(claim.wallet_address)
+                                                            antMessage.success('アドレスをコピーしました')
+                                                        } catch (error) {
+                                                            console.error('Copy error:', error)
+                                                            antMessage.error('コピーに失敗しました')
+                                                        }
+                                                    }}
                                                     className="text-blue-600 hover:text-blue-800"
                                                 >
                                                     {claim.wallet_address}

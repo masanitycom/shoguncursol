@@ -1,0 +1,11 @@
+{
+  "tasks": {
+    "deploy": "supabase functions deploy create-user"
+  },
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "lib": [
+      "deno.ns"
+    ]
+  }
+}

@@ -7,22 +7,66 @@ import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '@/lib/auth'
+import { updateUserData } from '@/utils/userSync'
+import { Modal, message as antMessage } from 'antd'
+
+declare const navigator: Navigator
+interface Navigator {
+    clipboard: {
+        writeText(text: string): Promise<void>
+    }
+}
+
+interface Profile {
+    id: string;
+    user_id: string;
+    name: string;
+    email: string;
+    wallet_address: string;
+    wallet_type: string | null;
+}
 
 interface User {
     id: string;
     email: string;
     user_id: string;
-    name: string;         // 名前
-    name_kana: string;    // フリガナ
+    name: string;
+    name_kana: string;
     wallet_address: string;
-    wallet_type: string;
+    wallet_type: string | null;
     created_at: string;
     active: boolean;
+    profiles: Profile[];
 }
 
 interface EditingUser extends User {
     isEditing?: boolean
 }
+
+type WalletType = 'EVO' | 'その他' | '';
+
+interface EditForm {
+    name: string;
+    email: string;
+    wallet_address: string;
+    wallet_type: WalletType;
+}
+
+interface UserUpdatePayload {
+    name: string;
+    name_kana: string;
+    email: string;
+    wallet_address: string;
+    wallet_type?: string;  // undefinedを許容
+}
+
+// wallet_typeを適切な型に変換するヘルパー関数を追加
+const convertToWalletType = (value: string | null): WalletType => {
+    if (value === 'EVO' || value === 'その他') {
+        return value;
+    }
+    return '';
+};
 
 export default function AdminUsersPage() {
     const router = useRouter()
@@ -30,11 +74,11 @@ export default function AdminUsersPage() {
     const [users, setUsers] = useState<EditingUser[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
-    const [editForm, setEditForm] = useState({
+    const [editForm, setEditForm] = useState<EditForm>({
         name: '',
         email: '',
         wallet_address: '',
-        wallet_type: 'EVOカード'
+        wallet_type: ''
     })
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -44,6 +88,19 @@ export default function AdminUsersPage() {
     useEffect(() => {
         checkAuth()
     }, [])
+
+    useEffect(() => {
+        const subscription = supabase
+            .channel('user_updates')
+            .on('broadcast', { event: 'user_updated' }, (payload) => {
+                fetchUsers(); // データを再取得
+            })
+            .subscribe();
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, []);
 
     const checkAuth = async () => {
         const { data: { session } } = await supabase.auth.getSession()
@@ -57,71 +114,90 @@ export default function AdminUsersPage() {
 
     const fetchUsers = async () => {
         try {
-            const { data, error } = await supabase
+            const { data: users, error } = await supabase
                 .from('users')
                 .select(`
-                    id,
-                    email,
-                    user_id,
-                    name,
-                    name_kana,
-                    wallet_address,
-                    wallet_type,
-                    created_at,
-                    active
+                    *,
+                    profiles:profiles(
+                        id,
+                        user_id,
+                        name,
+                        email,
+                        wallet_address,
+                        wallet_type
+                    )
                 `)
-                .order('created_at', { ascending: false })
+                .order('created_at', { ascending: false });
 
-            if (error) throw error
-            console.log('Fetched users:', data)
-            setUsers(data || [])
+            if (error) throw error;
+
+            // データの整形
+            const formattedUsers = users.map(user => {
+                const profile = user.profiles?.[0];  // 最初のプロフィールを使用
+                return {
+                    id: user.id,
+                    email: user.email,
+                    user_id: user.user_id,
+                    name: user.name,
+                    name_kana: user.name_kana,
+                    wallet_address: profile?.wallet_address || '',
+                    wallet_type: profile?.wallet_type || null,  // profileから取得
+                    created_at: user.created_at,
+                    active: user.active,
+                    profiles: user.profiles
+                };
+            });
+
+            setUsers(formattedUsers);
         } catch (error) {
-            console.error('Error fetching users:', error)
+            console.error('Error fetching users:', error);
+            setError('ユーザー情報の取得に失敗しました');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     const handleEdit = (user: User) => {
-        setSelectedUser(user)
+        console.log('Editing user:', user);
+        setSelectedUser(user);
         setEditForm({
-            name: user.name || '',           // 名前
+            name: user.name || user.name_kana || '',
             email: user.email || '',
             wallet_address: user.wallet_address || '',
-            wallet_type: user.wallet_type || 'EVOカード'
-        })
-        setIsEditModalOpen(true)
-    }
+            wallet_type: convertToWalletType(user.wallet_type)  // 型変換関数を使用
+        });
+        setIsEditModalOpen(true);
+    };
 
     const handleUpdateUser = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!selectedUser) return
+        e.preventDefault();
+        if (!selectedUser) return;
 
-        setError(null)
-        setSuccess(null)
+        setError(null);
+        setSuccess(null);
 
         try {
-            // プロフィール情報の更新（users テーブル）
-            const { error: profileError } = await supabase
-                .from('users')
-                .update({
-                    name: editForm.name,          // 名前を更新
-                    email: editForm.email,
-                    wallet_address: editForm.wallet_address,
-                    wallet_type: editForm.wallet_type
-                })
-                .eq('id', selectedUser.id)
+            const updateData: UserUpdatePayload = {
+                name: editForm.name,
+                name_kana: selectedUser.name_kana,
+                email: editForm.email,
+                wallet_address: editForm.wallet_address,
+                wallet_type: editForm.wallet_type || undefined
+            };
 
-            if (profileError) throw profileError
+            const result = await updateUserData(selectedUser.id, updateData);
+            console.log('Update result:', result);
 
-            setSuccess('ユーザー情報を更新しました')
-            fetchUsers() // ユーザー一覧を再取得
-            setIsEditModalOpen(false)
+            if (result.success) {
+                setSuccess('ユーザー情報を更新しました');
+                await fetchUsers();
+                setIsEditModalOpen(false);
+            }
         } catch (error: any) {
-            console.error('Update error:', error)
-            setError('ユーザー情報の更新に失敗しました: ' + error.message)
+            console.error('Update error:', error);
+            setError('ユーザー情報の更新に失敗しました: ' + error.message);
         }
-    }
+    };
 
     const updateUserStatus = async (userId: string, newStatus: boolean) => {
         try {
@@ -139,31 +215,50 @@ export default function AdminUsersPage() {
     }
 
     const deleteUser = async (userId: string) => {
-        if (!confirm('このユーザーを削除してもよろしいですか？')) return
+        Modal.confirm({
+            title: '確認',
+            content: 'このユーザーを削除してもよろしいですか？',
+            okText: '削除',
+            cancelText: 'キャンセル',
+            onOk: async () => {
+                try {
+                    const { error } = await supabase
+                        .from('profiles')
+                        .delete()
+                        .eq('id', userId)
 
-        try {
-            const { error } = await supabase
-                .from('users')
-                .delete()
-                .eq('id', userId)
+                    if (error) throw error
 
-            if (error) throw error
-            
-            // 成功したら一覧を更新
-            fetchUsers()
-        } catch (error) {
-            console.error('Error deleting user:', error)
-        }
+                    antMessage.success('ユーザーを削除しました')
+                    fetchUsers() // リストを再取得
+                } catch (error) {
+                    console.error('Delete error:', error)
+                    antMessage.error('ユーザーの削除に失敗しました')
+                }
+            }
+        })
     }
 
     const copyToClipboard = async (text: string) => {
         try {
             await navigator.clipboard.writeText(text)
-            alert('コピーしました')
+            antMessage.success('コピーしました')
         } catch (err) {
             console.error('Failed to copy:', err)
+            antMessage.error('コピーに失敗しました')
         }
     }
+
+    // ウォレットタイプの表示を修正
+    const renderWalletType = (walletType: string | null) => {
+        if (!walletType) return '未選択'  // NULLの場合は「未選択」と表示
+        return walletType
+    }
+
+    const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setEditForm(prev => ({ ...prev, [name]: value }));
+    };
 
     if (!user) return null
 
@@ -222,7 +317,7 @@ export default function AdminUsersPage() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="p-4">{user.wallet_type || '未設定'}</td>
+                                                <td className="p-4">{renderWalletType(user.wallet_type)}</td>
                                                 <td className="p-4">
                                                     {new Date(user.created_at).toLocaleDateString('ja-JP')}
                                                 </td>
@@ -267,61 +362,78 @@ export default function AdminUsersPage() {
                 </main>
             </div>
             {isEditModalOpen && selectedUser && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 p-6 rounded-lg w-96">
-                        <h3 className="text-xl font-bold text-white mb-4">ユーザー情報の編集</h3>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                    <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+                        <h2 className="text-xl font-bold text-white mb-6">ユーザー情報の編集</h2>
                         <form onSubmit={handleUpdateUser} className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-300">名前</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    名前
+                                </label>
                                 <input
                                     type="text"
+                                    name="name"
                                     value={editForm.name}
-                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                    onChange={handleEditFormChange}
+                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-300">メールアドレス</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    メールアドレス
+                                </label>
                                 <input
                                     type="email"
+                                    name="email"
                                     value={editForm.email}
-                                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                    onChange={handleEditFormChange}
+                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-300">ウォレットアドレス</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    ウォレットアドレス
+                                </label>
                                 <input
                                     type="text"
+                                    name="wallet_address"
                                     value={editForm.wallet_address}
-                                    onChange={(e) => setEditForm({ ...editForm, wallet_address: e.target.value })}
-                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                    onChange={handleEditFormChange}
+                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-300">ウォレットの種類</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    ウォレットの種類
+                                </label>
                                 <select
+                                    name="wallet_type"
                                     value={editForm.wallet_type}
-                                    onChange={(e) => setEditForm({ ...editForm, wallet_type: e.target.value })}
-                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                                    onChange={handleEditFormChange}
+                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    <option value="EVOカード">EVOカード</option>
-                                    <option value="その他">その他のウォレット</option>
+                                    <option value="">選択してください</option>
+                                    <option value="EVO">EVO</option>
+                                    <option value="その他">その他</option>
                                 </select>
                             </div>
-                            <div className="flex justify-end space-x-3">
+
+                            <div className="flex justify-end space-x-3 mt-6">
                                 <button
                                     type="button"
                                     onClick={() => setIsEditModalOpen(false)}
-                                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+                                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-500 transition-colors"
                                 >
                                     キャンセル
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors"
                                 >
-                                    保存
+                                    更新
                                 </button>
                             </div>
                         </form>

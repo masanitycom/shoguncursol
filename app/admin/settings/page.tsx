@@ -101,7 +101,10 @@ export default function AdminSettingsPage() {
                             <div className="mb-6">
                                 <textarea
                                     value={paymentMessage}
-                                    onChange={(e) => setPaymentMessage(e.target.value)}
+                                    onChange={(e) => {
+                                        const textarea = e.currentTarget as unknown as { value: string }
+                                        setPaymentMessage(textarea.value)
+                                    }}
                                     className="w-full h-64 border rounded px-3 py-2"
                                     placeholder="支払い情報のメッセージを入力してください"
                                 />

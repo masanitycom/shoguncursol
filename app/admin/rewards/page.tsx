@@ -6,11 +6,22 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useAuth } from '@/lib/auth'
+import { message as antMessage } from 'antd'
 import { 
     CalculatorIcon, 
     ArrowPathIcon,
     ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
+
+declare const window: Window & typeof globalThis
+declare const document: Document
+declare const navigator: Navigator
+
+interface Navigator {
+    clipboard: {
+        writeText(text: string): Promise<void>;
+    };
+}
 
 interface RewardRequest {
     id: string
@@ -188,7 +199,15 @@ export default function RewardsPage() {
                                                     <div className="flex items-center">
                                                         <span className="truncate w-32">{request.usdt_address}</span>
                                                         <button
-                                                            onClick={() => navigator.clipboard.writeText(request.usdt_address)}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await navigator.clipboard.writeText(request.usdt_address)
+                                                                    antMessage.success('アドレスをコピーしました')
+                                                                } catch (error) {
+                                                                    console.error('Copy error:', error)
+                                                                    antMessage.error('コピーに失敗しました')
+                                                                }
+                                                            }}
                                                             className="ml-2 text-gray-400 hover:text-white"
                                                         >
                                                             📋

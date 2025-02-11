@@ -1,0 +1,9 @@
+# /etc/cron.d/db-maintenance
+# 毎日午前3時にメンテナンスを実行
+0 3 * * * postgres /path/to/maintenance.sh
+
+# 毎週日曜日の午前2時にフルメンテナンスを実行
+0 2 * * 0 postgres /path/to/maintenance.sh --full
+
+# メンテナンスログの自動クリーンアップ（30日以上前のログを削除）
+0 1 * * * postgres psql -d $DB_NAME -c "DELETE FROM maintenance_logs WHERE started_at < CURRENT_DATE - INTERVAL '30 days';" 

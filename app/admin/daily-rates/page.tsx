@@ -40,6 +40,10 @@ export default function DailyRatesPage() {
         date: null,
         rate: 0
     })
+    const [notification, setNotification] = useState<{
+        type: 'success' | 'error',
+        message: string
+    } | null>(null)
 
     // 週の開始日（月曜日）を取得
     function getMonday(date: Date): string {
@@ -148,9 +152,11 @@ export default function DailyRatesPage() {
         setDailyRates(newRates)
     }
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
         setLoading(true)
         setError(null)
+        setNotification(null)
 
         try {
             // 既存のレートを削除
@@ -179,10 +185,17 @@ export default function DailyRatesPage() {
 
             if (error) throw error
 
-            alert('日利を設定しました')
+            setNotification({
+                type: 'success',
+                message: '日利を設定しました'
+            })
         } catch (error: any) {
             console.error('Error saving daily rates:', error)
             setError(error.message)
+            setNotification({
+                type: 'error',
+                message: 'エラーが発生しました'
+            })
         } finally {
             setLoading(false)
         }
@@ -406,6 +419,16 @@ export default function DailyRatesPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {notification && (
+                            <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
+                                notification.type === 'success' 
+                                    ? 'bg-green-500' 
+                                    : 'bg-red-500'
+                            }`}>
+                                <p className="text-white">{notification.message}</p>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>

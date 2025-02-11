@@ -179,7 +179,10 @@ export default function TasksPage() {
                                     <label className="block text-gray-700 mb-2">質問</label>
                                     <textarea
                                         value={newTask.description}
-                                        onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                                            const textarea = e.currentTarget as unknown as { value: string }
+                                            setNewTask({ ...newTask, description: textarea.value })
+                                        }}
                                         className="w-full border rounded px-3 py-2"
                                         placeholder="タスクの質問を入力してください"
                                         rows={3}

@@ -3,6 +3,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
+interface CustomWindow extends Window {
+    confirm(message?: string): boolean;
+}
+
+declare const window: CustomWindow & typeof globalThis;
+
 interface User {
     id: string
     email: string
@@ -109,16 +115,16 @@ export default function UserList() {
     }
 
     const handleDelete = async (userId: string) => {
-        if (!confirm('このユーザーを削除してもよろしいですか？')) return
+        if (!window.confirm('このユーザーを削除してもよろしいですか？')) return;
 
         try {
-            const { error } = await supabase.auth.admin.deleteUser(userId)
-            if (error) throw error
+            const { error } = await supabase.auth.admin.deleteUser(userId);
+            if (error) throw error;
             
-            fetchUsers()
+            fetchUsers();
         } catch (error: any) {
-            console.error('Error deleting user:', error)
-            setError('ユーザーの削除に失敗しました')
+            console.error('Error deleting user:', error);
+            setError('ユーザーの削除に失敗しました');
         }
     }
 

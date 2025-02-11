@@ -33,9 +33,14 @@ const recalculateUserInvestment = async (userId: string) => {
     }
 }
 
+interface ApproveRequestBody {
+    requestId: string;
+}
+
 export async function POST(request: Request) {
     try {
-        const { requestId } = await request.json()
+        const body = await request.json() as ApproveRequestBody;
+        const { requestId } = body;
         console.log('Processing request:', requestId)
 
         // 1. 購入申請の情報を取得

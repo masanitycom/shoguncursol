@@ -4,6 +4,14 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import nodemailer from 'nodemailer'
 
+interface EmailRequestBody {
+    nftName: string;
+    price: number;
+    paymentMethod: 'bank_transfer' | 'usdt';
+    userEmail?: string;
+    userName?: string;
+}
+
 // メール送信の設定
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
@@ -24,16 +32,18 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const body = await request.json()
-        const { nftName, price, paymentMethod } = body
+        const body = await request.json() as EmailRequestBody
+        const { nftName, price, paymentMethod, userEmail, userName } = body
 
         // ユーザーへのメール
         await transporter.sendMail({
             from: process.env.MAIL_FROM,
-            to: session.user.email,
-            subject: 'NFT購入申請を受け付けました',
+            to: userEmail,
+            subject: `NFT購入申請を受け付けました`,
+            text: `${userName}様\n\n以下の内容で購入申請を受け付けました。\n\nNFT: ${nftName}\n価格: ${price.toLocaleString()} USDT\n支払方法: ${paymentMethod === 'bank_transfer' ? '銀行振込' : 'USDT送金'}`,
             html: `
                 <h2>NFT購入申請を受け付けました</h2>
+                <p>${userName}様</p>
                 <p>以下の内容で購入申請を受け付けました。</p>
                 <ul>
                     <li>NFT: ${nftName}</li>
@@ -74,7 +84,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true })
 
     } catch (error) {
-        console.error('Error sending email:', error)
-        return NextResponse.json({ error: 'Failed to send email' }, { status: 500 })
+        console.error('Email sending error:', error)
+        return NextResponse.json({ 
+            error: 'Failed to send email',
+            details: error 
+        }, { 
+            status: 500 
+        })
     }
 } 

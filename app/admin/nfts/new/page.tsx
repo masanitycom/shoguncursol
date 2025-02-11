@@ -91,8 +91,9 @@ export default function NewNFTPage() {
     }
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setImageFile(e.target.files[0])
+        const input = e.target as unknown as { files: File[] | null }
+        if (input.files && input.files[0]) {
+            setImageFile(input.files[0])
         }
     }
 
@@ -157,7 +158,8 @@ export default function NewNFTPage() {
 
     // 特例NFTの切り替え時に日利を再計算
     const handleSpecialChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const isSpecial = e.target.checked
+        const checkbox = e.target as unknown as { checked: boolean }
+        const isSpecial = checkbox.checked
         console.log('Special change:', isSpecial)
         
         // 特例NFTに切り替えた時は、デフォルトで100USDTを選択
