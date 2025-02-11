@@ -69,16 +69,16 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         name: /^[ァ-ヶー0-9A-Za-z]+$/,  // カタカナと英数字のみ
         display_id: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/,  // 半角英数字混在で6文字以上
         phone: /^[0-9]{10,11}$/,            // 数字10-11桁
-        referrer_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,  // UUID形式
+        referrer_id: /^[A-Za-z0-9]+$/,   // 半角英数字のみ（文字数制限なし）
         wallet_address: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
     }
 
-    // エラーメッセージの定義
+    // エラーメッセージの定義を更新
     const VALIDATION_MESSAGES = {
         name: 'カタカナと英数字のみで入力してください（スペース不可）',
         display_id: 'ユーザーIDは半角英数字を混ぜて6文字以上で入力してください',
         phone: '電話番号は10桁または11桁の数字で入力してください',
-        referrer_id: '紹介者IDはUUID形式で入力してください',
+        referrer_id: '紹介者IDは必須です。半角英数字で入力してください',
         wallet_address: '有効なBEP20のUSDTアドレスを入力してください'
     }
 
@@ -160,10 +160,27 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        setError(null)
         setLoading(true)
+        setError(null)
 
         try {
+            // 紹介者IDのバリデーション
+            if (formData.referrer_id) {
+                // display_idから実際のUUIDを取得
+                const { data: referrer, error: referrerError } = await supabase
+                    .from('profiles')
+                    .select('user_id')
+                    .eq('display_id', formData.referrer_id)
+                    .single()
+
+                if (referrerError || !referrer) {
+                    throw new Error('指定された紹介者IDは存在しません')
+                }
+
+                // 実際のUUIDに置き換え
+                formData.referrer_id = referrer.user_id
+            }
+
             if (formData.password !== formData.confirmPassword) {
                 setError('パスワードが一致しません')
                 return
@@ -434,19 +451,21 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
                                 onBlur={handleBlur}
                                 required
                                 pattern={VALIDATION_PATTERNS.referrer_id.source}
-                                disabled={!!searchParams.get('ref')}
-                                placeholder="紹介者のIDを入力"
                                 className={`${inputClassName} ${
                                     validation.referrer_id.touched && !validation.referrer_id.isValid 
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
                                     : ''
                                 }`}
+                                placeholder="紹介者のIDを入力（必須）"
                             />
                             {validation.referrer_id.touched && !validation.referrer_id.isValid && (
                                 <p className="mt-1 text-sm text-red-500">
                                     {validation.referrer_id.message}
                                 </p>
                             )}
+                            <p className="mt-1 text-sm text-gray-400">
+                                紹介者のIDを入力してください
+                            </p>
                         </div>
 
                         <div>
