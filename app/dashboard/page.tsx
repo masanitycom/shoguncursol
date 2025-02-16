@@ -15,7 +15,7 @@ import {
 import DailyRatesDisplay from '@/components/DailyRatesDisplay'
 import { LEVELS } from '@/lib/constants/levels'
 import { NFTCard } from '@/components/NFTCard'
-import { calculateNFTStatus } from '@/lib/services/nft-status-calculator'
+import { calculateNFTStatus, calculateProfitDisplayDate } from '@/lib/services/nft-status-calculator'
 import { calculateUserLevel } from '@/app/lib/utils/calculateUserLevel'
 import type { 
     LevelStats, 
@@ -25,6 +25,7 @@ import type {
 } from '@/app/types/user'
 import { NFTSettings as ImportedNFTSettings } from '@/app/types/nft'
 import { User as SupabaseUser } from '@supabase/supabase-js'
+import { calculateWeeklyProfit } from '@/lib/services/profit-calculator'
 
 const DEFAULT_NFT_IMAGE = 'https://placehold.co/400x300/1f2937/ffffff?text=NFT'; // プレースホルダー画像を使用
 
@@ -138,6 +139,17 @@ interface HTMLImageElementWithSrc extends HTMLImageElement {
     src: string;
 }
 
+interface WeeklyProfit {
+    totalProfit: number;
+    startDate: Date;
+    endDate: Date;
+    dailyProfits: {
+        date: Date;
+        rate: number;
+        profit: number;
+    }[];
+}
+
 export default function DashboardPage() {
     const router = useRouter()
     const [user, setUser] = useState<CustomUser | null>(null)
@@ -155,6 +167,7 @@ export default function DashboardPage() {
         max_line_investment: 0,
         other_lines_investment: 0
     });
+    const [weeklyProfits, setWeeklyProfits] = useState<WeeklyProfit[]>([]);
 
     const fetchNFTs = useCallback(async (userId: string) => {
         try {
@@ -726,6 +739,43 @@ export default function DashboardPage() {
             setError('NFTデータの取得に失敗しました');
         }
     };
+
+    useEffect(() => {
+        const fetchProfits = async () => {
+            if (!userNFTs) return;
+
+            const profits = await Promise.all(
+                userNFTs.map(async nft => {
+                    const operationStartDate = calculateNFTStatus(
+                        new Date(nft.purchase_date)
+                    ).startDate;
+
+                    if (!operationStartDate) return null;
+
+                    // 報酬表示日が今日かどうかチェック
+                    const displayDate = calculateProfitDisplayDate(operationStartDate);
+                    const today = new Date();
+                    
+                    if (
+                        displayDate.getDate() === today.getDate() &&
+                        displayDate.getMonth() === today.getMonth() &&
+                        displayDate.getFullYear() === today.getFullYear()
+                    ) {
+                        return await calculateWeeklyProfit(
+                            nft.id,
+                            nft.price,
+                            operationStartDate
+                        );
+                    }
+                    return null;
+                })
+            );
+
+            setWeeklyProfits(profits.filter(Boolean) as WeeklyProfit[]);
+        };
+
+        fetchProfits();
+    }, [userNFTs]);
 
     return (
         <div className="min-h-screen bg-gray-900">

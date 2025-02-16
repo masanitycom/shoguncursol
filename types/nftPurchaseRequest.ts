@@ -7,6 +7,7 @@ export interface PurchaseRequest {
     approved_at?: string;
     rejected_at?: string;
     rejection_reason?: string;
+    payment_method: string;
     price?: number;
     user?: {
         name: string;
