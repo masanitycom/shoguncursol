@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
-import { useAuth } from '@/lib/auth'
 
 interface NFT {
     id: string
@@ -28,7 +27,6 @@ interface BulkSettings {
 
 export default function DailyRatesPage() {
     const router = useRouter()
-    const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
     const [nfts, setNfts] = useState<NFT[]>([])
     const [selectedWeek, setSelectedWeek] = useState<string>(getMonday(new Date()))
@@ -88,7 +86,26 @@ export default function DailyRatesPage() {
     }
 
     useEffect(() => {
+        const checkAuth = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                
+                if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
+                    window.location.replace('/admin/login')
+                    return
+                }
+                
+                setUser(session.user)
+            } catch (error) {
+                console.error('Auth check error:', error)
+                window.location.replace('/admin/login')
+            }
+        }
+
         checkAuth()
+    }, [])
+
+    useEffect(() => {
         fetchNFTs()
     }, [])
 
@@ -97,15 +114,6 @@ export default function DailyRatesPage() {
             initializeWeeklyRates()
         }
     }, [selectedWeek, nfts])
-
-    const checkAuth = async () => {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
-            router.push('/admin/login')
-            return
-        }
-        setUser(session.user)
-    }
 
     const fetchNFTs = async () => {
         try {
@@ -248,6 +256,17 @@ export default function DailyRatesPage() {
         }
 
         setDailyRates(newRates)
+    }
+
+    // ログアウト処理
+    const handleLogout = async () => {
+        try {
+            await supabase.auth.signOut()
+            // リダイレクトはhandleAuthStateChangeで処理されるため、ここでは何もしない
+        } catch (error) {
+            console.error('Logout error:', error)
+            window.location.replace('/admin/login')
+        }
     }
 
     if (!user) return null

@@ -2,9 +2,8 @@
 
 import React, { memo } from 'react'
 import { useContext, useEffect, useState, type ReactNode } from 'react'
-import { User } from '@supabase/supabase-js'
+import { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import { useRouter } from 'next/navigation'
 
 export interface AuthContextType {
     user: User | null;
@@ -22,8 +21,8 @@ function AuthProviderComponent({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<Error | null>(null)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
-    const router = useRouter()
 
+    // 認証状態の変更を監視
     useEffect(() => {
         const checkUser = async () => {
             try {
@@ -40,23 +39,29 @@ function AuthProviderComponent({ children }: { children: ReactNode }) {
         checkUser()
 
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            handleAuthStateChange(event, session)
+            console.log('Auth state changed:', { event, session })
+
+            if (event === 'SIGNED_OUT') {
+                setUser(null)
+                setIsAuthenticated(false)
+                
+                // 現在のパスを確認して適切なリダイレクト先を決定
+                const currentPath = window.location.pathname
+                const redirectPath = currentPath.startsWith('/admin') ? '/admin/login' : '/login'
+                
+                // 強制的にページ遷移
+                window.location.replace(redirectPath)
+                return
+            }
+
+            setUser(session?.user || null)
+            setIsAuthenticated(!!session)
         })
 
         return () => {
             authListener?.subscription.unsubscribe()
         }
     }, [])
-
-    const handleAuthStateChange = (event: AuthChangeEvent, session: Session | null) => {
-        console.log('Auth state changed:', {
-            event,
-            isAuthenticated: !!session
-        })
-        
-        setUser(session?.user || null)
-        setIsAuthenticated(!!session)
-    }
 
     const handleLogin = async (email: string, password: string) => {
         try {
@@ -70,21 +75,20 @@ function AuthProviderComponent({ children }: { children: ReactNode }) {
 
     const handleLogout = async () => {
         try {
-            // 現在のページ情報とユーザー情報を保存
+            // 現在のパスを保存
             const currentPath = window.location.pathname
-            const { data: { session } } = await supabase.auth.getSession()
-            const isAdmin = session?.user?.email?.endsWith('@admin.com')
-
-            // リダイレクト先を決定
-            const redirectPath = isAdmin ? '/admin/login' : '/login'
+            const redirectPath = currentPath.startsWith('/admin') ? '/admin/login' : '/login'
 
             // セッションをクリア
             await supabase.auth.signOut()
             
-            // リダイレクト
-            window.location.href = redirectPath
+            // リダイレクトはhandleAuthStateChangeで処理されるため、ここでは何もしない
         } catch (error) {
             console.error('Logout error:', error)
+            // エラー時のみ直接リダイレクト
+            const currentPath = window.location.pathname
+            const redirectPath = currentPath.startsWith('/admin') ? '/admin/login' : '/login'
+            window.location.replace(redirectPath)
         }
     }
 

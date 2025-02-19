@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../../lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export default function AdminLoginPage() {
     const router = useRouter()
@@ -13,6 +13,7 @@ export default function AdminLoginPage() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
+        setLoading(true)
         
         try {
             const { data, error } = await supabase.auth.signInWithPassword({
@@ -23,11 +24,15 @@ export default function AdminLoginPage() {
             if (error) throw error
             
             if (data.user?.email === 'testadmin@gmail.com') {
-                router.push('/admin/dashboard')
+                window.location.replace('/admin/dashboard')
+            } else {
+                throw new Error('管理者権限がありません')
             }
         } catch (error) {
             setError('ログインに失敗しました')
             console.error(error)
+        } finally {
+            setLoading(false)
         }
     }
 
