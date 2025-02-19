@@ -178,15 +178,16 @@ export class LevelCalculator {
     }
 
     // ユーザーの現在のレベルを計算
-    static async calculateUserLevel(userId: string) {
+    static async calculateUserLevel(userId: string): Promise<string> {
         console.log('Calculating level for:', userId);
 
         const hasRequiredNFT = await this.checkRequiredNFT(userId);
         console.log('NFT requirement met:', hasRequiredNFT);
 
-        if (!hasRequiredNFT) return null;
+        if (!hasRequiredNFT) return 'none';
 
         const { maxLine, otherLines } = await this.calculateLines(userId);
-        return this.determineLevel(maxLine, otherLines);
+        const level = this.determineLevel(maxLine, otherLines);
+        return level?.name || 'none';
     }
 } 

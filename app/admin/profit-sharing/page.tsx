@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { RewardCalculator } from '@/lib/services/reward-calculator';
+import { RewardCalculator } from '@/lib/services/profit-calculator';
 
 export default function ProfitSharingPage() {
     const [loading, setLoading] = useState(false);

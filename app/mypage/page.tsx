@@ -9,21 +9,13 @@ import Header from '@/components/Header'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '@/lib/auth'
-
-interface UserProfile {
-    id: string
-    email: string
-    name: string | null
-    wallet_type: string | null
-    wallet_address: string | null
-}
+import { UserProfile } from '@/types/user'
 
 function MyPageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const { handleLogout } = useAuth()
-    const [user, setUser] = useState<UserProfile | null>(null)
-    const [loading, setLoading] = useState(true)
+    const { user, loading, handleLogout } = useAuth()
+    const [profile, setProfile] = useState<UserProfile | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const [editMode, setEditMode] = useState(false)
@@ -56,9 +48,23 @@ function MyPageContent() {
                 return
             }
 
-            const { data: profile, error: profileError } = await supabase
+            const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
-                .select('*')
+                .select(`
+                    *,
+                    name,
+                    name_kana,
+                    wallet_type,
+                    wallet_address,
+                    investment_amount,
+                    total_team_investment,
+                    max_line_investment,
+                    other_lines_investment,
+                    active,
+                    created_at,
+                    updated_at,
+                    display_id
+                `)
                 .eq('id', session.user.id)
                 .single()
 
@@ -66,13 +72,24 @@ function MyPageContent() {
 
             const userData: UserProfile = {
                 id: session.user.id,
+                user_id: session.user.id,
                 email: session.user.email || '',
-                name: profile?.name || null,
-                wallet_type: profile?.wallet_type || null,
-                wallet_address: profile?.wallet_address || null
+                name: profileData?.name || '',
+                name_kana: profileData?.name_kana || '',
+                wallet_address: profileData?.wallet_address || null,
+                wallet_type: profileData?.wallet_type || null,
+                investment_amount: Number(profileData?.investment_amount) || 0,
+                total_team_investment: Number(profileData?.total_team_investment) || 0,
+                max_line_investment: Number(profileData?.max_line_investment) || 0,
+                other_lines_investment: Number(profileData?.other_lines_investment) || 0,
+                active: profileData?.active ?? true,
+                created_at: profileData?.created_at || new Date().toISOString(),
+                updated_at: profileData?.updated_at || new Date().toISOString(),
+                display_id: profileData?.display_id || session.user.id.slice(0, 8),
+                children: []
             }
 
-            setUser(userData)
+            setProfile(userData)
             setFormData({
                 email: userData.email,
                 name: userData.name || '',
@@ -82,20 +99,18 @@ function MyPageContent() {
         } catch (error: any) {
             console.error('Error fetching user:', error)
             setError(error.message)
-        } finally {
-            setLoading(false)
         }
     }
 
     const handleUpdate = async () => {
-        setLoading(true)
+        if (loading) return
         setError(null)
 
         try {
             const { error } = await supabase
                 .from('profiles')
                 .upsert({
-                    id: user?.id,
+                    id: profile?.id,
                     name: formData.name || null,
                     wallet_type: formData.wallet_type || null,
                     wallet_address: formData.wallet_address || null,
@@ -111,8 +126,6 @@ function MyPageContent() {
         } catch (error: any) {
             console.error('Error updating profile:', error)
             setError('更新に失敗しました')
-        } finally {
-            setLoading(false)
         }
     }
 
@@ -122,7 +135,7 @@ function MyPageContent() {
             return
         }
 
-        setLoading(true)
+        if (loading) return
         setError(null)
         setSuccess(null)
 
@@ -139,18 +152,21 @@ function MyPageContent() {
         } catch (error: any) {
             console.error('Error updating password:', error)
             setError(error.message)
-        } finally {
-            setLoading(false)
         }
     }
 
-    if (!user) return null
+    if (!profile) return null
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header 
-                user={user} 
+            <Header
+                user={user}
                 onLogout={handleLogout}
+                profile={profile ? {
+                    name: profile.name,
+                    email: profile.email
+                } : undefined}
+                isAdmin={false}
             />
             <main className="container mx-auto px-4 py-8">
                 <Link 
@@ -194,7 +210,7 @@ function MyPageContent() {
                             <form className="space-y-4">
                                 <div>
                                     <label className="block text-gray-400 mb-2">ユーザーID</label>
-                                    <p className="text-white font-mono">{user.id}</p>
+                                    <p className="text-white font-mono">{profile.id}</p>
                                 </div>
                                 <div>
                                     <label className="block text-gray-400 mb-2">メールアドレス</label>
@@ -257,11 +273,11 @@ function MyPageContent() {
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <span className="text-gray-400">ユーザーID</span>
-                                    <span className="text-white font-mono">{user.id}</span>
+                                    <span className="text-white font-mono">{profile.id}</span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-gray-400">メールアドレス</span>
-                                    <span className="text-white">{user.email}</span>
+                                    <span className="text-white">{profile.email}</span>
                                 </div>
                                 <div>
                                     <p className="text-gray-400">名前（カタカナ）</p>

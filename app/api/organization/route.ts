@@ -1,85 +1,104 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { OrganizationNode } from '@/types/organization';
+import { fetchUserLevelInfo, calculateUserLevel } from '@/lib/utils/calculateUserLevel';
+import { UserLevelParams } from '@/types/user';
 
-export async function GET() {
-    const supabase = createRouteHandlerClient({ cookies });
+interface ProfileData {
+    id: string;
+    user_id: string;
+    name: string | null;
+    email: string | null;
+    investment_amount: number | null;
+    total_team_investment: number | null;
+    max_line_investment: number | null;
+    other_lines_investment: number | null;
+    referrer_id: string | null;
+}
 
+function transformProfileToNode(profile: any): OrganizationNode {
+    const params: UserLevelParams = {
+        personalInvestment: Number(profile.investment_amount) || 0,
+        maxLine: Number(profile.max_line_investment) || 0,
+        otherLines: Number(profile.other_lines_investment) || 0
+    };
+    const level = calculateUserLevel(params);
+
+    return {
+        id: profile.id,
+        displayId: profile.display_id || profile.id.slice(0, 8),
+        name: profile.name || profile.email || 'Unknown',
+        email: profile.email || '',
+        nameKana: profile.name_kana || '',
+        investmentAmount: Number(profile.investment_amount) || 0,
+        totalTeamInvestment: Number(profile.total_team_investment) || 0,
+        maxLineInvestment: Number(profile.max_line_investment) || 0,
+        otherLinesInvestment: Number(profile.other_lines_investment) || 0,
+        level: level || '--',
+        referrerId: profile.referrer_id,
+        children: []
+    };
+}
+
+export async function GET(request: Request) {
     try {
+        const supabase = createRouteHandlerClient({ cookies });
+
+        // プロフィール情報を取得（SQLクエリのカラム名はスネークケースのまま）
         const { data: profiles, error } = await supabase
             .from('profiles')
             .select(`
                 id,
-                user_id,
-                display_id,
                 name,
+                name_kana,
                 email,
+                display_id,
+                level,
                 investment_amount,
                 total_team_investment,
-                referrer_id,
-                active,
-                created_at
-            `)
-            .neq('display_id', 'ADMIN001')
-            .eq('active', true)
-            .order('created_at', { ascending: true });
+                max_line_investment,
+                other_lines_investment,
+                referrer_id
+            `);
 
         if (error) throw error;
 
-        // デバッグ情報
-        console.log('Fetched profiles:', profiles.map(p => ({
-            name: p.name,
-            user_id: p.user_id,
-            referrer_id: p.referrer_id
-        })));
-
+        // 各プロフィールをノードに変換
+        const nodes = profiles.map(transformProfileToNode);
+        
         // データ構造を構築
-        const organizationMap = new Map();
-        const rootNodes = [];
+        const organizationMap = new Map<string, OrganizationNode>();
+        const rootNodes: OrganizationNode[] = [];
 
-        // プロフィールをマップに追加（user_idをキーとして使用）
-        profiles.forEach(profile => {
-            organizationMap.set(profile.user_id, {
-                ...profile,
-                children: []
-            });
+        // プロフィールをマップに追加
+        nodes.forEach(node => {
+            organizationMap.set(node.id, node);
         });
 
-        // 親子関係を構築（referrer_idはuser_idを参照）
-        profiles.forEach(profile => {
-            const node = organizationMap.get(profile.user_id);
-            
-            if (profile.referrer_id && organizationMap.has(profile.referrer_id)) {
-                // 紹介者が存在する場合
-                const parent = organizationMap.get(profile.referrer_id);
-                parent.children.push(node);
+        // 階層構造を構築
+        nodes.forEach(node => {
+            if (node.referrerId) {
+                const parentNode = organizationMap.get(node.referrerId);
+                if (parentNode) {
+                    // 新しい配列を作成して子ノードを追加
+                    const updatedParentNode: OrganizationNode = {
+                        ...parentNode,
+                        children: [...parentNode.children, node]
+                    };
+                    organizationMap.set(node.referrerId, updatedParentNode);
+                }
             } else {
-                // 紹介者がいない、または見つからない場合
                 rootNodes.push(node);
             }
-        });
-
-        // デバッグ情報
-        console.log('Organization structure:', {
-            totalProfiles: profiles.length,
-            mappedNodes: organizationMap.size,
-            rootNodes: rootNodes.map(node => ({
-                name: node.name,
-                user_id: node.user_id,
-                children: node.children.map(child => ({
-                    name: child.name,
-                    user_id: child.user_id,
-                    referrer_id: child.referrer_id
-                }))
-            }))
         });
 
         return NextResponse.json(rootNodes);
 
     } catch (error) {
-        console.error('Organization error:', error);
+        console.error('Error fetching organization:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch organization data' },
+            { error: '組織図の取得中にエラーが発生しました' },
             { status: 500 }
         );
     }

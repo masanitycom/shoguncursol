@@ -7,20 +7,27 @@ export async function POST(request: Request) {
         const { email } = await request.json()
         const supabase = createRouteHandlerClient({ cookies })
 
-        const { data, error } = await supabase.auth.admin.listUsers({
-            filters: {
-                email: email
-            }
-        })
+        // メールアドレスでユーザーを検索
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('email', email)
+            .single()
 
-        if (error) throw error
+        if (error) {
+            throw error
+        }
 
+        // ユーザーが存在する場合はtrue、存在しない場合はfalseを返す
         return NextResponse.json({
-            exists: data.users.length > 0
+            exists: !!data
         })
 
     } catch (error) {
-        console.error('Email check error:', error)
-        return NextResponse.json({ error: 'Failed to check email' }, { status: 500 })
+        console.error('Error checking email:', error)
+        return NextResponse.json(
+            { error: 'メールアドレスの確認中にエラーが発生しました' },
+            { status: 500 }
+        )
     }
 } 

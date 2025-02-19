@@ -4,14 +4,7 @@
   },
   "compilerOptions": {
     "allowJs": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "lib": ["deno.window", "deno.ns", "dom", "dom.iterable", "dom.asynciterable"],
-    "types": ["deno"]
-  },
-  "imports": {
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.21.0"
+    "lib": ["deno.ns"]
   },
   "fmt": {
     "files": {

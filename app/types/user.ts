@@ -5,11 +5,10 @@ export interface LevelInfo {
 }
 
 export interface LevelStats {
-    totalInvestment: number;
-    referralCount: number;
-    currentLevel: string;
-    nextLevel: string | null;
-    progressToNext: number;
+    level: string;
+    maxLine: number;
+    otherLines: number;
+    personalInvestment: number;
 }
 
 export interface UserLevelParams {

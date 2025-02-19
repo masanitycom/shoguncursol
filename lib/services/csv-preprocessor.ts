@@ -27,8 +27,8 @@ export interface ProcessedUserData {
     initial_investment_date: string | null;
 }
 
-class CSVPreprocessorImpl {
-    public async preprocessCSV(file: File): Promise<{
+export class CSVPreprocessor {
+    static async preprocessCSV(file: File): Promise<{
         success: ProcessedUserData[];
         errors: { row: number; error: string }[];
     }> {
@@ -59,7 +59,7 @@ class CSVPreprocessorImpl {
         }
     }
 
-    private transformRow(row: RawCSVData, index: number): ProcessedUserData {
+    private static transformRow(row: RawCSVData, index: number): ProcessedUserData {
         // IDの検証
         if (!row.id?.trim()) {
             throw new Error(`ID（display_id）が未設定です（行: ${index + 1}）`);
@@ -93,7 +93,7 @@ class CSVPreprocessorImpl {
         };
     }
 
-    private validateEmail(email: string, id: string): string {
+    private static validateEmail(email: string, id: string): string {
         const trimmedEmail = email?.trim() || '';
         if (!trimmedEmail) {
             return `${id}@temporary.com`;
@@ -107,7 +107,7 @@ class CSVPreprocessorImpl {
         return trimmedEmail;
     }
 
-    private validateInvestment(investment: string, id: string): number {
+    private static validateInvestment(investment: string, id: string): number {
         const value = parseFloat(investment?.trim() || '0');
         if (isNaN(value)) {
             console.warn(`不正な投資額です（ID: ${id}）。0として処理します。`);
@@ -116,7 +116,7 @@ class CSVPreprocessorImpl {
         return value;
     }
 
-    private processDates(row: RawCSVData, index: number): {
+    private static processDates(row: RawCSVData, index: number): {
         created_at: string;
         initial_investment_date: string | null;
     } {
@@ -143,7 +143,7 @@ class CSVPreprocessorImpl {
         return { created_at, initial_investment_date };
     }
 
-    private parseCSV(file: File): Promise<RawCSVData[]> {
+    private static parseCSV(file: File): Promise<RawCSVData[]> {
         return new Promise((resolve, reject) => {
             Papa.parse(file, {
                 header: true,
@@ -161,7 +161,7 @@ class CSVPreprocessorImpl {
         });
     }
 
-    private formatDate(dateStr: string): string {
+    private static formatDate(dateStr: string): string {
         try {
             // 日付フォーマットの正規化
             let normalizedDate = dateStr;
@@ -208,11 +208,11 @@ class CSVPreprocessorImpl {
         }
     }
 
-    private formatPhoneNumber(phone: string): string {
+    private static formatPhoneNumber(phone: string): string {
         return phone ? phone.replace(/[^\d]/g, '') : '';
     }
 
-    private validatePosition(position: string): 'left' | 'right' | null {
+    private static validatePosition(position: string): 'left' | 'right' | null {
         if (!position) return null;
         const pos = position.toLowerCase();
         if (pos !== 'left' && pos !== 'right') {
@@ -221,9 +221,7 @@ class CSVPreprocessorImpl {
         return pos as 'left' | 'right';
     }
 
-    private extractNameKana(name: string): string {
+    private static extractNameKana(name: string): string {
         return name;
     }
-}
-
-export const CSVPreprocessor = new CSVPreprocessorImpl(); 
+} 

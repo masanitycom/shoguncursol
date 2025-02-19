@@ -7,16 +7,59 @@ import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { TreeChart } from '@/app/organization/components/TreeChart'
 import { useAuth } from '@/lib/auth'
-import { Member } from '@/app/types/organization'
 
-interface OrganizationProps {
-    members: Member[]
+interface Member {
+    id: string;
+    display_id: string;
+    name: string;
+    name_kana?: string;
+    email: string;
+    display_name: string;
+    level: string;
+    investment_amount: number;
+    max_line_investment: number;
+    other_lines_investment: number;
+    total_team_investment: number;
+    referrer_id: string | null;
+    children: Member[];
 }
+
+interface NFTSettings {
+    id: string;
+    price: string;
+}
+
+interface NFTData {
+    id: string;
+    user_id: string;
+    nft_id: string;
+    status: string;
+    nft_settings: NFTSettings;
+}
+
+// レベル計算用の定数
+const LEVEL_THRESHOLDS = {
+    NONE: 0,
+    BRONZE: 3000,
+    SILVER: 10000,
+    GOLD: 30000,
+    PLATINUM: 100000,
+    DIAMOND: 300000
+};
+
+// レベル計算関数
+const calculateLevel = (investment: number): string => {
+    if (investment >= LEVEL_THRESHOLDS.DIAMOND) return 'diamond';
+    if (investment >= LEVEL_THRESHOLDS.PLATINUM) return 'platinum';
+    if (investment >= LEVEL_THRESHOLDS.GOLD) return 'gold';
+    if (investment >= LEVEL_THRESHOLDS.SILVER) return 'silver';
+    if (investment >= LEVEL_THRESHOLDS.BRONZE) return 'bronze';
+    return 'none';
+};
 
 export default function AdminOrganizationPage() {
     const router = useRouter()
-    const { handleLogout } = useAuth()
-    const [user, setUser] = useState<any>(null)
+    const { handleLogout, user } = useAuth()
     const [organization, setOrganization] = useState<Member[] | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -26,135 +69,104 @@ export default function AdminOrganizationPage() {
     })
 
     useEffect(() => {
-        const fetchStats = async () => {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session?.user?.id) return
-
+        const fetchUsers = async () => {
             try {
-                // 総投資額を取得
-                const { data: users, error: usersError } = await supabase
-                    .from('users')
-                    .select('investment_amount')
+                // 全ユーザーのプロフィールを取得
+                const { data: profiles, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('*')
 
-                if (usersError) throw usersError
+                if (profileError) throw profileError
+                
+                // デバッグ用にデータを出力
+                console.log('User data with referrers:', profiles)
 
-                const totalInvestment = users.reduce((sum, user) => 
-                    sum + Number(user.investment_amount || 0), 0)
-
-                // 総ユーザー数を取得
-                const { count, error: countError } = await supabase
-                    .from('users')
-                    .select('id', { 
-                        count: 'exact',
-                        head: true 
-                    })
-
-                if (countError) throw countError
+                // 組織ツリーを構築
+                const organizationTree = await buildOrganizationTree(profiles)
+                
+                // 統計情報の計算
+                const totalInvestment = organizationTree.reduce((sum, member) => 
+                    sum + member.investment_amount, 0)
+                const totalUsers = organizationTree.length
 
                 setStats({
                     totalInvestment,
-                    totalUsers: count || 0
+                    totalUsers
                 })
+
+                setOrganization(organizationTree)
             } catch (error) {
-                console.error('Error fetching stats:', error)
+                console.error('Error fetching users:', error)
+                setError('Failed to fetch organization data')
+            } finally {
+                setLoading(false)
             }
         }
 
-        fetchStats()
+        fetchUsers()
     }, [])
 
-    const buildOrganizationTree = (users: any[]): Member[] => {
-        const nodes = new Map<string, Member>();
-        const roots: Member[] = [];
-
+    const buildOrganizationTree = async (profiles: any[]): Promise<Member[]> => {
         try {
-            // 各ユーザーをノードに変換
-            users.forEach(user => {
-                const userNode: Member = {
-                    id: user.id,
-                    display_id: user.display_id || user.id.slice(0, 8),
-                    name: user.name || 'Unknown',
-                    email: user.email || '',
-                    name_kana: user.name_kana || '',
-                    display_name: user.display_id || user.id.slice(0, 8),
-                    investment_amount: Number(user.investment_amount) || 0,
-                    level: user.level || 0,
-                    referrer_id: user.referrer_id,
-                    children: [],
-                    total_team_investment: Number(user.investment_amount) || 0
-                };
-                nodes.set(user.id, userNode);
-            });
+            // ルートノード（referrer_idがnull）を見つける
+            const rootNodes = profiles.filter(p => !p.referrer_id)
 
-            // ツリー構造を構築
-            users.forEach(user => {
-                const node = nodes.get(user.id);
-                if (node) {
-                    if (user.referrer_id && nodes.has(user.referrer_id)) {
-                        // 親ノードが存在する場合、その子として追加
-                        const parent = nodes.get(user.referrer_id);
-                        if (parent) {
-                            parent.children.push(node);
-                        }
-                    } else {
-                        // 親がいない場合はルートノードとして追加
-                        roots.push(node);
-                    }
+            const buildTree = async (node: any): Promise<Member> => {
+                const children = await Promise.all(
+                    profiles
+                        .filter(p => p.referrer_id === node.id)
+                        .map(child => buildTree(child))
+                )
+
+                // NFTデータを取得
+                const { data: nftData, error: nftError } = await supabase
+                    .from('nft_purchase_requests')
+                    .select(`
+                        id,
+                        status,
+                        nft_settings (
+                            id,
+                            price
+                        )
+                    `)
+                    .eq('user_id', node.id)
+                    .eq('status', 'approved')
+
+                if (nftError) throw nftError
+
+                // 投資額を計算
+                const investment = (nftData || []).reduce((sum: number, nft: any) => {
+                    return sum + Number(nft.nft_settings?.price || 0)
+                }, 0)
+
+                // 子ノードの投資額を合算
+                const totalTeamInvestment = investment + children.reduce((sum, child) => 
+                    sum + child.total_team_investment, 0
+                )
+
+                return {
+                    id: node.id,
+                    display_id: node.display_id,
+                    name: node.name || node.display_id,
+                    name_kana: node.name_kana || '',
+                    email: node.email || '',
+                    display_name: node.display_name || '',
+                    level: calculateLevel(investment),
+                    investment_amount: investment,
+                    max_line_investment: node.max_line_investment || 0,
+                    other_lines_investment: node.other_lines_investment || 0,
+                    total_team_investment: totalTeamInvestment,
+                    referrer_id: node.referrer_id,
+                    children: children
                 }
-            });
-
-            return roots;
-        } catch (error) {
-            console.error('Error building organization tree:', error);
-            return [];
-        }
-    };
-
-    useEffect(() => {
-        const initialize = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
-                    router.push('/admin/login');
-                    return;
-                }
-
-                setUser(session.user);
-
-                // すべてのユーザーを取得
-                const { data: users, error } = await supabase
-                    .from('users')
-                    .select('*')
-                    .order('created_at');
-
-                if (error) throw error;
-
-                // ユーザー配列を使用してツリーを構築
-                const rootUsers = buildOrganizationTree(users || []);
-                console.log('Organization data:', rootUsers);
-                setOrganization(rootUsers);
-
-                // 統計情報を更新
-                const totalInvestment = users?.reduce((sum, user) => 
-                    sum + Number(user.investment_amount || 0), 0) || 0;
-
-                setStats({
-                    totalInvestment,
-                    totalUsers: users?.length || 0
-                });
-            } catch (error) {
-                console.error('Error initializing:', error);
-                setError('データの取得に失敗しました');
-            } finally {
-                setLoading(false);
             }
-        };
 
-        initialize();
-    }, []);
-
-    if (loading) return <div>Loading...</div>;
-    if (error) return <div>{error}</div>;
+            return await Promise.all(rootNodes.map(node => buildTree(node)))
+        } catch (error) {
+            console.error('Error building organization tree:', error)
+            throw error
+        }
+    }
 
     return (
         <div className="min-h-screen bg-gray-900">
@@ -167,7 +179,6 @@ export default function AdminOrganizationPage() {
                 <AdminSidebar />
                 <main className="flex-1 p-8 overflow-x-auto">
                     <h1 className="text-3xl font-bold text-white mb-8">組織図</h1>
-
                     <div className="grid grid-cols-2 gap-4 mb-8">
                         <div className="bg-gray-800 p-4 rounded-lg">
                             <h3 className="text-gray-400 text-sm">総投資額</h3>
@@ -182,11 +193,16 @@ export default function AdminOrganizationPage() {
                             </p>
                         </div>
                     </div>
-
                     <div className="min-w-max space-y-8">
                         {organization && Array.isArray(organization) ? (
                             organization.map(member => (
-                                <TreeChart key={member.id} member={member} />
+                                <TreeChart 
+                                    key={member.id} 
+                                    member={member}
+                                    depth={0}
+                                    maxDepth={3}
+                                    isUserView={false}
+                                />
                             ))
                         ) : (
                             <div className="text-center text-gray-400">
@@ -197,5 +213,5 @@ export default function AdminOrganizationPage() {
                 </main>
             </div>
         </div>
-    );
+    )
 } 

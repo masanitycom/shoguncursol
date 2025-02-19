@@ -1,13 +1,16 @@
-import { NFTOperation, RewardStatus } from '@/app/types/RewardTypes';
-import { formatDate, formatNumber } from '@/app/utils/format';
-import { isWeekend } from '@/app/utils/nftOperations';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { NFTOperation, RewardStatus } from '@/types/RewardTypes';
+import { formatDate, formatNumber } from '@/utils/format';
+import { isWeekend } from '@/utils/nftOperations';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
-import { NFT } from '@/app/types/nft';
 
 interface NFTCardProps {
-    nft: NFT;
+    nft: NFTOperation;
     onStatusChange?: () => void;
+    onPurchase?: (nft: NFTOperation) => void;
+    showPurchaseButton?: boolean;
 }
 
 // ステータスバッジの設定
@@ -50,11 +53,9 @@ const getImageUrl = (imageUrl: string | null) => {
     return imageUrl.replace(/([^:]\/)\/+/g, "$1");
 };
 
-export const NFTCard: React.FC<NFTCardProps> = ({ nft, onStatusChange }) => {
+export const NFTCard: React.FC<NFTCardProps> = ({ nft, onStatusChange, onPurchase, showPurchaseButton }) => {
     const dailyRate = nft.daily_rate ?? 0;
-
-    // NFTのステータスを取得（デフォルトはACTIVE）
-    const status = nft.status as RewardStatus || RewardStatus.ACTIVE;
+    const status = nft.status;
 
     const canClaimReward = 
         status === RewardStatus.PENDING && 
@@ -123,13 +124,13 @@ export const NFTCard: React.FC<NFTCardProps> = ({ nft, onStatusChange }) => {
                     <div className="space-y-1.5 text-sm">
                         <div className="text-gray-400">投資情報</div>
                         <div className="text-gray-300">
-                            投資額: {formatNumber(nft.purchaseAmount)} USDT
+                            投資額: {formatNumber(nft.purchaseAmount || 0)} USDT
                         </div>
                         <div className="text-emerald-400">
                             日利: {dailyRate}%
                         </div>
                         <div className="text-gray-300">
-                            購入日: {formatDate(nft.purchaseDate)}
+                            購入日: {nft.purchaseDate ? formatDate(nft.purchaseDate) : '未購入'}
                         </div>
                     </div>
 
@@ -137,7 +138,7 @@ export const NFTCard: React.FC<NFTCardProps> = ({ nft, onStatusChange }) => {
                     <div className="space-y-1.5 text-sm">
                         <div className="text-gray-400">報酬情報</div>
                         <div className="text-yellow-400">
-                            累積報酬: {formatNumber(nft.accumulatedProfit)} USDT
+                            累積報酬: {formatNumber(nft.accumulatedProfit || 0)} USDT
                         </div>
                         {nft.lastClaimDate && (
                             <div className="text-gray-300">
@@ -155,15 +156,19 @@ export const NFTCard: React.FC<NFTCardProps> = ({ nft, onStatusChange }) => {
                 {/* 運用情報 */}
                 <div className="space-y-1.5 text-sm">
                     <div className="text-blue-300">
-                        運用開始予定日: {formatDate(nft.operationStartDate)}
+                        運用開始予定日: {nft.operationStartDate ? formatDate(nft.operationStartDate) : '未定'}
                     </div>
                     {status === RewardStatus.PENDING && (
                         <>
                             <div className="text-yellow-400">
-                                報酬申請可能期間: {formatDate(nft.nextClaimStartDate)} ～ {formatDate(nft.nextClaimEndDate)}
+                                報酬申請可能期間: {
+                                    nft.nextClaimStartDate && nft.nextClaimEndDate
+                                        ? `${formatDate(nft.nextClaimStartDate)} ～ ${formatDate(nft.nextClaimEndDate)}`
+                                        : '未定'
+                                }
                             </div>
                             <div className="text-blue-400">
-                                報酬支払予定日: {formatDate(nft.nextPaymentDate)}
+                                報酬支払予定日: {nft.nextPaymentDate ? formatDate(nft.nextPaymentDate) : '未定'}
                             </div>
                         </>
                     )}

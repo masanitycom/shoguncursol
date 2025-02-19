@@ -2,50 +2,30 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '../../../providers/auth'
+import { TaskResponse } from '@/types/task'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/auth'
-
-interface TaskResponse {
-    id: string
-    task_id: string
-    user_id: string
-    selected_option: number
-    status: 'pending' | 'approved' | 'rejected'
-    created_at: string
-    task: {
-        description: string
-        option1: string
-        option2: string
-        option3: string
-        option4: string
-    }
-    user: {
-        email: string
-    }
-}
 
 export default function PendingTasksPage() {
     const router = useRouter()
-    const { user } = useAuth()
+    const { user, loading } = useAuth()
     const [responses, setResponses] = useState<TaskResponse[]>([])
-    const [loading, setLoading] = useState(true)
+    const [pageLoading, setPageLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
 
     useEffect(() => {
-        checkAuth()
-        fetchPendingResponses()
-    }, [])
-
-    const checkAuth = async () => {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user?.email || session.user.email !== 'testadmin@gmail.com') {
-            router.push('/admin/login')
+        if (!loading && !user) {
+            router.push('/login')
             return
         }
-    }
 
-    const fetchPendingResponses = async () => {
+        if (user) {
+            fetchPendingTasks()
+        }
+    }, [user, loading, router])
+
+    const fetchPendingTasks = async () => {
         try {
             const { data, error } = await supabase
                 .from('task_responses')
@@ -63,12 +43,12 @@ export default function PendingTasksPage() {
             console.error('Error fetching responses:', error)
             setError(error.message)
         } finally {
-            setLoading(false)
+            setPageLoading(false)
         }
     }
 
     const handleUpdateStatus = async (responseId: string, status: 'approved' | 'rejected') => {
-        setLoading(true)
+        setPageLoading(true)
         setError(null)
         setSuccess(null)
 
@@ -81,16 +61,15 @@ export default function PendingTasksPage() {
             if (error) throw error
 
             setSuccess(`回答を${status === 'approved' ? '承認' : '却下'}しました`)
-            fetchPendingResponses()
+            fetchPendingTasks()
         } catch (error: any) {
             console.error('Error updating response:', error)
             setError(error.message)
         } finally {
-            setLoading(false)
+            setPageLoading(false)
         }
     }
 
-    // メインコンテンツのみを返す（ヘッダーとサイドバーは削除）
     return (
         <div className="p-6">
             <h1 className="text-2xl font-bold text-white mb-6">未承認の回答一覧</h1>
@@ -162,4 +141,4 @@ export default function PendingTasksPage() {
             )}
         </div>
     )
-} 
+}

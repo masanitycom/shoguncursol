@@ -8,23 +8,20 @@ export interface NFTStatusInfo {
 }
 
 export interface NFTType {
-    id: string;           // 必須フィールド
+    id: string;
     name: string;
     price: number;
     maxDailyRate: number;
-    currentDailyRate?: number;
+    currentDailyRate: number;
     isLegacy: boolean;
 }
 
-export type UserNFT = {
-  id: string
-  userId: string
-  nftTypeId: number
-  purchaseDate: Date
-  initialAmount: number
-  currentAmount: number
-  isActive: boolean
-  nftType?: NFTType
+export interface UserNFT {
+    id: string;
+    nft_id: string;
+    user_id: string;
+    nft: NFTType;
+    nftType?: NFTType;  // 後方互換性のために追加
 }
 
 export type DailyRate = {
@@ -44,42 +41,42 @@ export type NFTDailyProfit = {
   isAirdropped: boolean
 }
 
-export interface NFT {
+export interface NFTSettings {
     id: string;
+    name: string;
+    description?: string;
+    price: number;
+    daily_rate: number;
+    status: 'active' | 'inactive';
+    created_at: string;
+    updated_at: string;
+}
+
+export interface NFT {
     nft_id: string;
-    purchase_date: string;
+    user_id: string;
+    approved_at: string;
+    nft_settings: NFTSettings;
     status: string;
-    nft_purchase_requests?: {
-        approved_at: string;
-    }[];
-    nft?: {
-        id: string;
-        name: string;
-        price: number;
-        daily_rate: number;
-        image_url: string | null;
-    };
-    nft_settings?: {
-        id: string;
-        name: string;
-        price: number;
-        daily_rate: number;
-        image_url: string | null;
-    };
+    created_at: string;
+    updated_at: string;
+}
+
+export interface NFTWithPurchaseInfo extends NFT {
+    purchase_status?: 'pending' | 'approved' | 'rejected';
+    purchase_date?: string;
+    purchase_id?: string;
 }
 
 export interface NFTPurchaseRequest {
-    id: string
-    user_id: string
-    nft_id: string
-    status: 'pending' | 'approved' | 'rejected'
-    created_at: string
-    approved_at?: string
-    nft?: {
-        id: string
-        name: string
-        price: number
-        daily_rate: number
-        image_url: string | null
-    }
+    id: string;
+    user_id: string;
+    nft_settings_id: string;
+    status: 'pending' | 'approved' | 'rejected';
+    created_at: string;
+    nft_settings?: NFTSettings;
+    user?: {
+        email: string;
+        name?: string;
+    };
 } 

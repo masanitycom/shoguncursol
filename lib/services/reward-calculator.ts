@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
-import { LevelCalculator } from './level-calculator';
-import { LEVELS } from '@/lib/constants/levels';
-import type { NFTType, UserNFT } from '@/types/nft';
+import { LEVEL_REQUIREMENTS } from '@/lib/constants/levels';
+import { NFTType } from '@/types/nft';
+import { calculateUserLevel, UserLevelResult } from '@/lib/utils/userLevel';
+import type { UserNFT } from '@/types/nft';
 
 // データベースから取得するNFTの型を定義
 interface UserNFTData {
@@ -30,7 +31,7 @@ interface UserLevelInfo {
     user_id: string;
     level: {
         name: string;
-        share_rate: number;          // 分配率（例：45 = 45%）
+        share_rate: number;
     };
 }
 
@@ -63,22 +64,40 @@ const NFT_DAILY_RATES: { [key: string]: number } = {
 };
 
 export class RewardCalculator {
-    // 日利計算
-    static calculateDailyReward(nft: NFTType): number {
-        return nft.price * (nft.currentDailyRate || 0);
+    // 基本的な報酬計算
+    static calculateReward(investment: number, rate: number): number {
+        return investment * (rate / 100);
+    }
+
+    // 日次報酬の計算
+    static calculateDailyReward(nftData: NFTType): number {
+        return this.calculateReward(nftData.price, nftData.currentDailyRate);
     }
 
     // 複利計算
     static calculateCompoundInterest(
         principal: number,
-        dailyRate: number,
+        rate: number,
         days: number
     ): number {
-        let amount = principal;
-        for (let i = 0; i < days; i++) {
-            amount += amount * dailyRate;
-        }
-        return amount - principal;
+        const dailyRate = rate / 100;
+        return principal * Math.pow(1 + dailyRate, days);
+    }
+
+    // 利益分配の計算
+    static async calculateProfitSharing(params: {
+        totalProfit: number;
+        sharingAmount: number;
+        weekStart: Date;
+        weekEnd: Date;
+    }): Promise<number> {
+        return Promise.resolve(params.sharingAmount);
+    }
+
+    // ユーザーレベルに基づく報酬率の取得
+    static getLevelShareRate(level: string): number {
+        const levelReq = LEVEL_REQUIREMENTS.find(l => l.name === level);
+        return levelReq?.shareRate || 0;
     }
 
     // ユーザーレベル情報の取得
@@ -101,12 +120,12 @@ export class RewardCalculator {
 
             const usersWithLevels = await Promise.all(
                 (users || []).map(async (user) => {
-                    const level = await LevelCalculator.calculateUserLevel(user.user_id);
+                    const levelInfo: UserLevelResult = await calculateUserLevel(user.user_id);
                     return {
                         user_id: user.user_id,
                         level: {
-                            name: level?.name || 'なし',
-                            share_rate: level?.shareRate || 0
+                            name: levelInfo.level,
+                            share_rate: levelInfo.stats.totalInvestment
                         }
                     };
                 })
@@ -128,16 +147,6 @@ export class RewardCalculator {
             }
             return acc;
         }, {} as { [key: string]: number });
-    }
-
-    // 分配金計算
-    static async calculateProfitSharing(params: {
-        totalProfit: number;
-        sharingAmount: number;
-        weekStart: Date;
-        weekEnd: Date;
-    }): Promise<number> {
-        return params.sharingAmount;
     }
 
     // 総報酬計算
@@ -204,7 +213,7 @@ export class RewardCalculator {
 
         if (!userLevel) return 0;
 
-        const level = LEVELS.find(l => l.name === userLevel.level);
+        const level = LEVEL_REQUIREMENTS.find((l: { name: string; shareRate: number }) => l.name === userLevel.level);
         if (!level) return 0;
 
         return level.shareRate / 100;

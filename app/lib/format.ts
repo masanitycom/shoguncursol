@@ -31,14 +31,11 @@ export function formatDateTime(date: Date | string | null): string {
 }
 
 export function getJSTDate(): Date {
-    const now = new Date();
-    now.setHours(now.getHours() + 9);
-    return now;
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
 }
 
-export function calculateOperationStartDate(purchaseDate: Date): Date {
-    const startDate = new Date(purchaseDate);
-    startDate.setHours(startDate.getHours() + 9); // JSTに変換
-    startDate.setDate(startDate.getDate() + 14);  // 2週間後
-    return startDate;
+export function calculateOperationStartDate(baseDate: Date): string {
+    const date = new Date(baseDate);
+    date.setDate(date.getDate() + 14); // 2週間後を運用開始日とする
+    return date.toISOString();
 } 

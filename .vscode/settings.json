@@ -1,0 +1,18 @@
+{
+  "deno.enable": false,
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.config": "./supabase/functions/deno.jsonc",
+  "deno.importMap": "./supabase/functions/import_map.json",
+  "deno.codeLens.test": true,
+  "deno.suggest.imports.hosts": {
+    "https://deno.land": true
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "typescript.validate.enable": true,
+  "javascript.validate.enable": true,
+  "[typescript][supabase/functions/**/*]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  }
+} 

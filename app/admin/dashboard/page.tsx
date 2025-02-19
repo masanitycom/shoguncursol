@@ -15,6 +15,7 @@ import {
     GiftIcon
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@/lib/auth'
+import { IconType } from 'react-icons'
 
 interface NFTSettings {
     id: string;
@@ -39,12 +40,12 @@ interface PurchaseRequest {
 }
 
 interface DashboardStats {
-    totalUsers: number
-    activeUsers: number
-    totalInvestment: number
-    monthlyRevenue: number
-    pendingPurchases: number
-    pendingAirdrops: number
+    totalUsers: number;
+    activeUsers: number;
+    totalInvestment: number;
+    monthlyRevenue?: number;      // オプショナルに変更
+    pendingPurchases?: number;    // オプショナルに変更
+    pendingAirdrops?: number;     // オプショナルに変更
 }
 
 interface NFTPurchaseRequest {
@@ -62,6 +63,8 @@ interface NFTPurchaseRequest {
     }
 }
 
+export const dynamic = 'force-dynamic'
+
 export default function AdminDashboardPage() {
     const router = useRouter()
     const { handleLogout } = useAuth()
@@ -69,10 +72,7 @@ export default function AdminDashboardPage() {
     const [stats, setStats] = useState<DashboardStats>({
         totalUsers: 0,
         activeUsers: 0,
-        totalInvestment: 0,
-        monthlyRevenue: 0,
-        pendingPurchases: 0,
-        pendingAirdrops: 0
+        totalInvestment: 0
     })
     const [loading, setLoading] = useState(true)
     const [pendingPurchases, setPendingPurchases] = useState<NFTPurchaseRequest[]>([])
@@ -93,59 +93,29 @@ export default function AdminDashboardPage() {
 
     const fetchDashboardStats = async () => {
         try {
-            // ユーザー情報の取得（アクティブフラグを確認）
-            const { data: users, error: usersError } = await supabase
+            const { data, error } = await supabase
                 .from('users')
-                .select('*')
-
-            if (usersError) throw usersError
-
-            // 保留中の購入申請数を取得
-            const { data: pendingPurchases, error: pendingError } = await supabase
-                .from('nft_purchase_requests')
-                .select('id')
-                .eq('status', 'pending')  // statusが'pending'のものを取得
-
-            if (pendingError) throw pendingError
-
-            // 投資額の計算（承認済みの購入のみ）
-            const { data: nftPurchases, error: purchasesError } = await supabase
-                .from('nft_purchase_requests')
                 .select(`
                     id,
-                    user_id,
-                    nft_id,
-                    status,
-                    created_at,
-                    approved_at,
-                    payment_method,
-                    nfts:nft_settings!inner (
-                        id,
-                        name,
-                        price,
-                        daily_rate,
-                        image_url,
-                        owner_id,
-                        status,
-                        description
-                    )
+                    investment_amount,
+                    level
                 `)
-                .eq('status', 'approved')
 
-            if (purchasesError) throw purchasesError
+            if (error) throw error
 
-            // 型アサーション
-            const typedPurchases = nftPurchases as PurchaseRequest[];
-            const totalInvestment = calculateTotalInvestment(typedPurchases);
+            // 総投資額の計算（数値型に変換して計算）
+            const totalInvestment = data?.reduce((sum, user) => 
+                sum + (Number(user.investment_amount) || 0), 0) || 0
+
+            // アクティブユーザー数（投資額が0より大きいユーザー）
+            const activeUsers = data?.filter(user => 
+                Number(user.investment_amount) > 0).length || 0
 
             // 統計情報を更新
             setStats({
-                totalUsers: users?.length || 0,
-                activeUsers: users?.filter(u => u.active).length || 0,
-                totalInvestment: totalInvestment,
-                monthlyRevenue: 0,
-                pendingPurchases: pendingPurchases?.length || 0,
-                pendingAirdrops: 0  // エアドロップ機能は後で実装
+                totalInvestment,
+                totalUsers: data?.length || 0,
+                activeUsers
             })
 
         } catch (error) {
@@ -283,13 +253,15 @@ interface StatCardProps {
     loading: boolean
     prefix?: string
     suffix?: string
-    icon?: any
+    icon?: IconType
     href?: string
     highlight?: boolean
 }
 
-function StatCard({ title, value, loading, prefix, suffix, icon: Icon, href, highlight }: StatCardProps) {
+const StatCard = ({ title, value, loading, prefix, suffix, icon: Icon, href, highlight }: StatCardProps) => {
     const CardWrapper = href ? Link : 'div'
+    
+    const displayValue = value ?? 0  // または適切なデフォルト値
     
     return (
         <CardWrapper
@@ -306,7 +278,7 @@ function StatCard({ title, value, loading, prefix, suffix, icon: Icon, href, hig
                             <span className="animate-pulse">Loading...</span>
                         ) : (
                             <>
-                                {prefix}{value.toLocaleString()}{suffix}
+                                {prefix}{displayValue.toLocaleString()}{suffix}
                             </>
                         )}
                     </p>

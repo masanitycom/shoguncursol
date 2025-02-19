@@ -5,27 +5,28 @@ export enum RewardStatus {
     PENDING = "PENDING",      // 報酬申請可能
     CLAIMED = "CLAIMED",      // 報酬申請済み
     DISTRIBUTED = "DISTRIBUTED", // 報酬支払済み
-    FAILED = "FAILED"         // 失敗
+    FAILED = "FAILED",        // 失敗
+    SUSPENDED = "suspended"   // 停止中
 }
 
 // NFT運用状況の型を定義
 export interface NFTOperation {
     id: string;
-    name: string;
     nftId: string;
     userId: string;
-    purchaseDate: Date;
-    purchaseAmount: number;
-    dailyRate: number;
-    operationStartDate: Date;  // 運用開始日
-    nextClaimStartDate: Date;  // 次回の報酬申請開始日
-    nextClaimEndDate: Date;    // 次回の報酬申請終了日
-    nextPaymentDate: Date;     // 次回の支払予定日
-    accumulatedProfit: number; // 累積報酬
+    operationType: 'purchase' | 'transfer' | 'sale';
     status: RewardStatus;
-    imageUrl?: string; // 画像URLを追加
-    lastClaimDate?: Date;      // 最終報酬申請日
-    lastPaymentDate?: Date;    // 最終支払日
+    amount: number;
+    createdAt: string;
+    updatedAt: string;
+    startDate?: string;
+    endDate?: string;
+}
+
+export interface NFTOperationResponse {
+    success: boolean;
+    message: string;
+    operation?: NFTOperation;
 }
 
 // ユーザーランクの列挙型
@@ -38,6 +39,16 @@ export enum UserRank {
     ROCHU = "老中",
     DAIMYO = "大名",
     SHOGUN = "将軍"
+}
+
+// NFT運用状況の計算結果の型を定義
+export interface NFTOperationStatus {
+    operationStartDate: Date;
+    nextClaimStartDate: Date;
+    nextClaimEndDate: Date;
+    nextPaymentDate: Date;
+    status: RewardStatus;
+    accumulatedProfit: number;
 }
 
 // 型定義を確認させてください 

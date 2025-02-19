@@ -3,14 +3,15 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { User } from '@supabase/supabase-js'
 
-interface HeaderProps {
-    user: any;
+export interface HeaderProps {
+    user: User | null;
+    onLogout: () => Promise<void>;
     profile?: {
-        display_name: string;
+        name?: string | null;
         email: string;
     };
-    onLogout: () => void;
     isAdmin?: boolean;
 }
 
@@ -18,7 +19,7 @@ export default function Header({ user, profile, onLogout, isAdmin }: HeaderProps
     const router = useRouter()
 
     // display_nameがある場合はそれを、なければemailを表示
-    const displayName = profile?.display_name || user?.email || 'ユーザー';
+    const displayName = profile?.name || user?.email || 'ユーザー';
 
     return (
         <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
@@ -33,10 +34,7 @@ export default function Header({ user, profile, onLogout, isAdmin }: HeaderProps
                     <div className="flex items-center space-x-4">
                         <span className="text-white">{displayName}</span>
                         <button
-                            onClick={async () => {
-                                await supabase.auth.signOut()
-                                router.push('/login')
-                            }}
+                            onClick={onLogout}
                             className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
                         >
                             ログアウト

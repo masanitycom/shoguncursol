@@ -9,10 +9,11 @@ interface VerificationError {
 }
 
 // メタデータを削除（クライアントコンポーネントでは使用不可）
-export default function Page() {
+export default function VerifyPage() {
     const [userId, setUserId] = useState('');
     const [results, setResults] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<VerificationError | null>(null);
 
     const verifyLevel = async () => {
         setLoading(true);
@@ -29,33 +30,47 @@ export default function Page() {
             console.log('NFT check details:', hasNFT);
             
             const lines = await LevelCalculator.calculateLines(userId);
-            console.log('Lines calculation details:', lines);
+            console.log('Code lines:', lines);
             
-            const level = await LevelCalculator.calculateUserLevel(userId);
-            console.log('Level calculation details:', level);
+            const userLevel = await LevelCalculator.calculateUserLevel(userId);
+            console.log('User level:', userLevel);
 
             setResults({
                 hasRequiredNFT: hasNFT,
                 lines,
-                currentLevel: level,
-                nextLevel: level ? LEVEL_REQUIREMENTS.find(l => 
-                    l.maxLine > lines.maxLine || l.otherLines > lines.otherLines
-                ) : null,
+                currentLevel: userLevel,
+                nextLevel: userLevel ? LEVEL_REQUIREMENTS.find(l => {
+                    const currentLevelReq = LEVEL_REQUIREMENTS.find(req => req.name === userLevel);
+                    if (!currentLevelReq) return false;
+                    
+                    // レベル名の配列でインデックスを比較
+                    const levelOrder = ['足軽', '武将', '代官', '奉行', '老中', '大老', '大名', '将軍'];
+                    const currentIndex = levelOrder.indexOf(userLevel);
+                    const candidateIndex = levelOrder.indexOf(l.name);
+                    
+                    return (
+                        candidateIndex > currentIndex && 
+                        l.maxLine > lines.maxLine && 
+                        l.otherLines > lines.otherLines
+                    );
+                }) : null,
                 debug: {
                     userId,
                     nftCheck: hasNFT,
                     linesCalc: lines,
-                    levelCalc: level
+                    levelCalc: userLevel
                 }
             });
         } catch (error) {
-            console.error('Level verification error:', error);
-            const errorMessage = error instanceof Error ? error.message :
-                               typeof error === 'object' && error && 'message' in error ? (error as VerificationError).message :
-                               'エラーが発生しました';
+            console.error('Error during verification:', error);
+            setError({
+                message: 'レベル検証中にエラーが発生しました'
+            });
             
             setResults({
-                error: errorMessage,
+                error: error instanceof Error ? error.message :
+                       typeof error === 'object' && error && 'message' in error ? (error as VerificationError).message :
+                       'エラーが発生しました',
                 debug: { error }
             });
         } finally {
@@ -99,7 +114,7 @@ export default function Page() {
 
                     <div className="bg-gray-100 p-4 rounded">
                         <h2 className="font-bold">現在のレベル:</h2>
-                        <p>{results.currentLevel?.name || 'レベルなし'}</p>
+                        <p>{results.currentLevel || 'レベルなし'}</p>
                         {results.nextLevel && (
                             <div className="mt-2">
                                 <h3 className="font-bold">次のレベルまでの要件:</h3>

@@ -2,49 +2,59 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/app/auth/AuthProvider'
+import { User } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
-import { supabase } from '@/lib/supabase'
 
 export default function AdminLayoutClient({
-    children,
+    children  // childrenプロパティを追加
 }: {
     children: React.ReactNode
 }) {
     const router = useRouter()
-    const { user, loading } = useAuth()
+    const [user, setUser] = useState<User | null>(null)
 
     useEffect(() => {
-        // 管理者権限チェック
-        const checkAdminRole = async () => {
-            if (!user) return
+        checkAuth()
+    }, [])
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('user_id', user.id)
-                .single()
-
-            if (!profile || profile.role !== 'admin') {
-                router.push('/')
-            }
+    const checkAuth = async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+            router.push('/login')
+            return
+        }
+        
+        if (session.user.email !== 'testadmin@gmail.com') {
+            router.push('/dashboard')
+            return
         }
 
-        checkAdminRole()
-    }, [user, router])
+        setUser(session.user)
+    }
 
-    if (loading) {
-        return <div>Loading...</div>
+    // ログアウト処理を追加
+    const handleLogout = async () => {
+        try {
+            await supabase.auth.signOut()
+            router.push('/login')
+        } catch (error) {
+            console.error('Error logging out:', error)
+        }
     }
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header user={user} isAdmin={true} />
+            <Header 
+                user={user} 
+                isAdmin={true} 
+                onLogout={handleLogout}  // ログアウト処理を渡す
+            />
             <div className="flex">
                 <AdminSidebar />
                 <main className="flex-1 p-6">
-                    {children}
+                    {children}  {/* 子コンポーネントを表示 */}
                 </main>
             </div>
         </div>

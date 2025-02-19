@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { RewardCalculator } from '@/lib/services/reward-calculator'
+import { RewardCalculator } from '@/lib/services/reward-calculator';
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import type { NFTType } from '@/types/nft'
@@ -66,8 +66,8 @@ export default function CalculateRewardsPage() {
 
             const compoundReward = RewardCalculator.calculateCompoundInterest(
                 testData.investment,
-                testData.dailyRate,
-                testData.days
+                nftData.currentDailyRate,
+                5 // 営業日数
             )
 
             const profitShare = await RewardCalculator.calculateProfitSharing({

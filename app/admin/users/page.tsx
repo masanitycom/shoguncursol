@@ -7,7 +7,7 @@ import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '@/lib/auth'
-import { updateUserData } from '@/utils/userSync'
+import { syncUserData } from '@/lib/utils/user-sync';
 import { Modal, message as antMessage } from 'antd'
 
 declare const navigator: Navigator
@@ -17,13 +17,16 @@ interface Navigator {
     }
 }
 
-interface Profile {
-    id: string;
-    user_id: string;
-    name: string;
-    email: string;
-    wallet_address: string;
-    wallet_type: string | null;
+interface UserProfile {
+    id: string
+    name: string
+    email: string
+    display_id: string | null
+    status: string
+    investment_amount: number
+    total_team_investment: number
+    active: boolean
+    created_at: string
 }
 
 interface User {
@@ -36,7 +39,7 @@ interface User {
     wallet_type: string | null;
     created_at: string;
     active: boolean;
-    profiles: Profile[];
+    profiles: UserProfile[];
 }
 
 interface EditingUser extends User {
@@ -71,7 +74,7 @@ const convertToWalletType = (value: string | null): WalletType => {
 export default function AdminUsersPage() {
     const router = useRouter()
     const { handleLogout } = useAuth()
-    const [users, setUsers] = useState<EditingUser[]>([])
+    const [users, setUsers] = useState<UserProfile[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
     const [editForm, setEditForm] = useState<EditForm>({
@@ -114,48 +117,37 @@ export default function AdminUsersPage() {
 
     const fetchUsers = async () => {
         try {
-            const { data: users, error } = await supabase
-                .from('users')
+            console.log('Fetching users data...')
+            
+            // profilesテーブルから直接データを取得
+            const { data, error } = await supabase
+                .from('profiles')
                 .select(`
-                    *,
-                    profiles:profiles(
-                        id,
-                        user_id,
-                        name,
-                        email,
-                        wallet_address,
-                        wallet_type
-                    )
+                    id,
+                    name,
+                    email,
+                    display_id,
+                    status,
+                    active,
+                    created_at,
+                    investment_amount,
+                    total_team_investment
                 `)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase error:', error)
+                throw error
+            }
 
-            // データの整形
-            const formattedUsers = users.map(user => {
-                const profile = user.profiles?.[0];  // 最初のプロフィールを使用
-                return {
-                    id: user.id,
-                    email: user.email,
-                    user_id: user.user_id,
-                    name: user.name,
-                    name_kana: user.name_kana,
-                    wallet_address: profile?.wallet_address || '',
-                    wallet_type: profile?.wallet_type || null,  // profileから取得
-                    created_at: user.created_at,
-                    active: user.active,
-                    profiles: user.profiles
-                };
-            });
-
-            setUsers(formattedUsers);
+            console.log('Fetched users:', data)
+            setUsers(data || [])
         } catch (error) {
-            console.error('Error fetching users:', error);
-            setError('ユーザー情報の取得に失敗しました');
+            console.error('Error fetching users:', error)
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     const handleEdit = (user: User) => {
         console.log('Editing user:', user);
@@ -185,7 +177,7 @@ export default function AdminUsersPage() {
                 wallet_type: editForm.wallet_type || undefined
             };
 
-            const result = await updateUserData(selectedUser.id, updateData);
+            const result = await syncUserData(selectedUser.id, updateData);
             console.log('Update result:', result);
 
             if (result.success) {
@@ -294,18 +286,17 @@ export default function AdminUsersPage() {
                                     <tbody>
                                         {users.map(user => (
                                             <tr key={user.id} className="border-b border-gray-700">
-                                                <td className="p-4">{user.user_id}</td>
+                                                <td className="p-4">{user.display_id || '-'}</td>
                                                 <td className="p-4">
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium">{user.name || '未設定'}</span>
-                                                        <span className="text-sm text-gray-400">{user.email}</span>
-                                                        <span className="text-xs text-gray-500">ID: {user.user_id}</span>
+                                                        <span className="font-medium">{user.name || '-'}</span>
+                                                        <span className="text-sm text-gray-400">{user.email || '-'}</span>
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex items-center space-x-2">
                                                         <span className="truncate max-w-[150px]">
-                                                            {user.wallet_address || '未設定'}
+                                                            {user.wallet_address || '-'}
                                                         </span>
                                                         {user.wallet_address && (
                                                             <button
@@ -327,13 +318,13 @@ export default function AdminUsersPage() {
                                                             ? 'bg-green-600' 
                                                             : 'bg-red-600'
                                                     }`}>
-                                                        {user.active ? 'active' : 'inactive'}
+                                                        {user.status}
                                                     </span>
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex items-center space-x-1">
                                                         <button
-                                                            onClick={() => handleEdit(user)}
+                                                            onClick={() => handleEdit(user as User)}
                                                             className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs whitespace-nowrap"
                                                         >
                                                             編集

@@ -6,7 +6,16 @@
 import { useState, type ChangeEvent } from 'react';
 import { CSVPreprocessor } from '@/lib/services/csv-preprocessor';
 import Papa from 'papaparse';
-import type { CustomDocument, CustomWindow } from '@/types/dom';
+import { 
+    CustomWindow, 
+    CustomAnchor, 
+    CustomDocument,
+    isCustomWindow,
+    isCustomDocument,
+    isCustomAnchor,
+    FileWithPath,
+    DragEvent
+} from '@/types/dom';
 
 interface ProcessedUserData {
     id: string;
@@ -31,14 +40,14 @@ type FileInputElement = HTMLInputElement & {
     files: File[];
 }
 
-interface CustomAnchor extends HTMLAnchorElement {
-    href: string;
-    download: string;
-    click(): void;
-}
-
 declare const document: CustomDocument;
 declare const window: CustomWindow;
+
+// エラー型を定義
+interface ProcessError {
+    row: number;
+    error: string;
+}
 
 const CSVPreprocessorUI = () => {
     const [errors, setErrors] = useState<string[]>([]);
@@ -46,22 +55,20 @@ const CSVPreprocessorUI = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const downloadFile = (content: string, filename: string) => {
-        if (typeof window === 'undefined') return;
-
+    const downloadCSV = (content: string, filename: string) => {
         try {
             const blob = new Blob([content], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a') as CustomAnchor;
+            const link = document.createElement('a') as HTMLAnchorElement;
+
             link.href = url;
             link.download = filename;
-            
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
         } catch (error) {
-            console.error('Download error:', error);
+            console.error('Error downloading CSV:', error);
         }
     };
 
@@ -76,17 +83,19 @@ const CSVPreprocessorUI = () => {
         setError(null);
 
         try {
-            // CSVの検証と前処理
             const result = await CSVPreprocessor.preprocessCSV(file);
 
             if (result.errors.length > 0) {
-                setErrors(result.errors.map(e => `Row ${e.row}: ${e.error}`));
+                // エラーメッセージの配列に変換
+                setErrors(result.errors.map(err => 
+                    `行 ${err.row}: ${err.error}`
+                ));
                 return;
             }
 
             // 検証済みデータのダウンロード
             const processedCSV = Papa.unparse(result.success);
-            downloadFile(processedCSV, `processed_${file.name}`);
+            downloadCSV(processedCSV, `processed_${file.name}`);
 
             setSuccess('CSVファイルの処理が完了しました。処理済みファイルがダウンロードされます。');
 

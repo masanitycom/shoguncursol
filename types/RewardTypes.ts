@@ -1,15 +1,31 @@
 // NFT運用状況の型を更新
+export const RewardStatus = {
+    ACTIVE: 'active',
+    PENDING: 'pending',
+    COMPLETED: 'completed',
+    SUSPENDED: 'suspended'
+} as const;
+
+export type RewardStatus = typeof RewardStatus[keyof typeof RewardStatus];
+
 export interface NFTOperation {
     id: string;
-    nft_id: string;
-    user_id: string;
-    status: 'waiting' | 'active' | 'completed' | 'suspended';
-    purchase_amount: number;
-    current_profit: number;
-    profit_percentage: number;
-    purchase_date: Date;
-    operation_start_date: Date;
-    last_reward_date: Date | null;
+    name: string;
+    price: number;
+    daily_rate: number;
+    currentDailyRate?: number;
+    image_url: string | null;
+    created_at: string;
+    status: RewardStatus;
+    purchaseAmount?: number;
+    accumulatedProfit?: number;
+    lastClaimDate?: string;
+    lastPaymentDate?: string;
+    operationStartDate?: string;
+    nextClaimStartDate?: string;
+    nextClaimEndDate?: string;
+    nextPaymentDate?: string;
+    purchaseDate?: string;
 }
 
 // ユーザーレベル情報の型を追加

@@ -1,3 +1,5 @@
+import { formatDate, formatNumber, formatPrice } from '@/utils/format';
+
 interface NFTCardProps {
   nft: {
     id: string;

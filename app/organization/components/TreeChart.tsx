@@ -1,6 +1,10 @@
+'use client'
+
+import React from 'react';
+import { OrganizationNode } from '@/types/organization';
 import { useCallback, useState, useEffect, useMemo } from 'react'
 import { UserIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { Member } from '@/app/types/organization'
+import { Member } from '@/types/organization'
 
 interface TreeChartProps {
     member: Member;
@@ -45,51 +49,8 @@ export const TreeChart: React.FC<TreeChartProps> = ({
     isUserView = false 
 }) => {
     const [isExpanded, setIsExpanded] = useState(depth < 2)
-
-    console.log('Member data:', {
-        id: member.id,
-        name: member.name,
-        level: member.level,
-        investment: member.investment_amount,
-        total: member.total_team_investment
-    });
-
     const hasChildren = member.children && member.children.length > 0
 
-    const initializeLines = (member: Member): MemberWithLines => {
-        return {
-            ...member,
-            maxLine: 0,
-            otherLines: 0,
-            children: member.children?.map(child => initializeLines(child)) || []
-        }
-    }
-
-    const initializedMember = useMemo(() => initializeLines(member), [member])
-
-    const calculateLines = useCallback((member: Member) => {
-        if (!member.children || member.children.length === 0) {
-            member.maxLine = 0;
-            member.otherLines = 0;
-            return;
-        }
-
-        member.children.forEach(calculateLines);
-        
-        const childrenInvestments = member.children.map(child => 
-            (child.investment_amount || 0) + (child.maxLine || 0)
-        );
-
-        member.maxLine = Math.max(...childrenInvestments);
-        const totalChildInvestment = childrenInvestments.reduce((sum, inv) => sum + inv, 0);
-        member.otherLines = totalChildInvestment - member.maxLine;
-    }, []);
-
-    useEffect(() => {
-        calculateLines(initializedMember)
-    }, [initializedMember, calculateLines])
-
-    // 型安全な表示用関数
     const formatAmount = (amount: number | undefined | null): string => {
         if (amount === undefined || amount === null) return '0';
         return amount.toLocaleString();
@@ -107,6 +68,9 @@ export const TreeChart: React.FC<TreeChartProps> = ({
                             <span className="text-white font-medium">
                                 {member.name}
                             </span>
+                            <span className="text-sm text-gray-400">
+                                {member.display_id || ''}
+                            </span>
                             <span className={`
                                 px-2 py-1 rounded text-xs text-white
                                 ${getLevelBadge(member.level.toString()).color}
@@ -121,10 +85,10 @@ export const TreeChart: React.FC<TreeChartProps> = ({
                             {hasChildren && (
                                 <>
                                     <div className="text-gray-400">
-                                        最大系列: <span className="text-white">${formatAmount(initializedMember.maxLine)}</span>
+                                        最大系列: <span className="text-white">${formatAmount(member.maxLine)}</span>
                                     </div>
                                     <div className="text-gray-400">
-                                        他系列全体: <span className="text-white">${formatAmount(initializedMember.otherLines)}</span>
+                                        他系列全体: <span className="text-white">${formatAmount(member.otherLines)}</span>
                                     </div>
                                 </>
                             )}

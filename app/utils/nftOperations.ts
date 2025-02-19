@@ -1,51 +1,50 @@
 import { getJSTDate, calculateOperationStartDate } from '@/app/lib/format';
-import { RewardStatus, NFTOperation } from '@/app/types/RewardTypes';
-
-interface NFTOperation {
-    id: string;
-    nft_id: string;
-    user_id: string;
-    status: 'waiting' | 'active' | 'completed' | 'suspended';
-    purchase_amount: number;
-    current_profit: number;
-    profit_percentage: number;
-    purchase_date: Date;
-    operation_start_date: Date;
-    suspended_at?: Date;
-}
+import { RewardStatus, NFTOperation, NFTOperationStatus } from '@/app/types/RewardTypes';
+import { supabase } from '@/lib/supabase';
 
 export async function createNFTOperation(
     nftId: string,
     userId: string,
-    purchaseAmount: number
-) {
-    const purchaseDate = getJSTDate();
-    const operationStartDate = calculateOperationStartDate(purchaseDate);
+    operationType: 'purchase' | 'transfer' | 'sale',
+    amount: number
+): Promise<NFTOperation> {
+    const now = getJSTDate();
+    const startDate = calculateOperationStartDate(now);
 
     const { data, error } = await supabase
         .from('nft_operations')
         .insert({
             nft_id: nftId,
             user_id: userId,
-            status: 'waiting',
-            purchase_amount: purchaseAmount,
-            current_profit: 0,
-            profit_percentage: 0,
-            purchase_date: purchaseDate.toISOString(),
-            operation_start_date: operationStartDate.toISOString(),
-            created_at: purchaseDate.toISOString(),
-            updated_at: purchaseDate.toISOString()
+            operation_type: operationType,
+            status: 'pending',
+            amount,
+            created_at: now,
+            updated_at: now,
+            start_date: startDate,
         })
         .select()
         .single();
 
     if (error) throw error;
-    return data;
+
+    return {
+        id: data.id,
+        nftId: data.nft_id,
+        userId: data.user_id,
+        operationType: data.operation_type,
+        status: data.status,
+        amount: data.amount,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        startDate: data.start_date,
+        endDate: data.end_date,
+    };
 }
 
 export async function updateNFTOperationStatus(
     nftId: string,
-    newStatus: NFTOperation['status'],
+    newStatus: RewardStatus,
     reason?: string
 ) {
     const now = getJSTDate();
@@ -54,7 +53,7 @@ export async function updateNFTOperationStatus(
         .from('nft_operations')
         .update({
             status: newStatus,
-            suspended_at: newStatus === 'suspended' ? now.toISOString() : null,
+            suspended_at: newStatus === RewardStatus.SUSPENDED ? now.toISOString() : null,
             suspension_reason: reason,
             updated_at: now.toISOString()
         })
@@ -73,10 +72,10 @@ export async function suspendNFTOperation(
     const { data, error } = await supabase
         .from('nft_operations')
         .update({
-            status: 'suspended',
-            suspended_at: new Date(),
+            status: RewardStatus.SUSPENDED,
+            suspended_at: new Date().toISOString(),
             suspension_reason: reason,
-            updated_at: new Date()
+            updated_at: new Date().toISOString()
         })
         .eq('nft_id', nftId)
         .select()
@@ -90,7 +89,7 @@ export async function suspendNFTOperation(
 export function calculateNFTOperationStatus(
     purchaseDate: Date,
     dailyRate: number
-): Partial<NFTOperation> {
+): NFTOperationStatus {
     const jstNow = getJSTDate();
     const operationStartDate = new Date(purchaseDate);
     operationStartDate.setDate(operationStartDate.getDate() + 14); // 2週間後

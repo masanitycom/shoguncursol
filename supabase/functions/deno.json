@@ -3,9 +3,27 @@
     "deploy": "supabase functions deploy create-user"
   },
   "compilerOptions": {
-    "experimentalDecorators": true,
-    "lib": [
-      "deno.ns"
-    ]
+    "allowJs": true,
+    "lib": ["deno.ns"],
+    "strict": true
+  },
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.7.1"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "fmt": {
+    "files": {
+      "include": ["**/*.ts"]
+    },
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80,
+      "indentWidth": 2,
+      "singleQuote": true
+    }
   }
 }

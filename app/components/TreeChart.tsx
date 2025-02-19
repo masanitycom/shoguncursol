@@ -1,56 +1,98 @@
 'use client'
 
 import React from 'react'
-import { OrganizationNode } from '@/app/types/organization'
+import { UserProfile } from '@/types/user'
+import { OrganizationNode, BaseNode } from '@/types/organization'
+import { Member } from '@/types/organization'
+
+type NodeType = UserProfile & BaseNode & {
+    children: Array<UserProfile & BaseNode & {
+        children: UserProfile[];
+    }>;
+    maxLineInvestment: number;
+    otherLinesInvestment: number;
+};
 
 interface TreeChartProps {
-    member: OrganizationNode
-    isUserView?: boolean
+    member: Member;
+    depth?: number;
+    maxDepth?: number;
+    isUserView?: boolean;
 }
 
-export default function TreeChart({ member, isUserView = false }: TreeChartProps) {
-    const formatAmount = (amount: number) => {
-        return `$${amount.toLocaleString()} USDT`
-    }
+// 型ガード関数
+const isNodeType = (node: any): node is NodeType => {
+    return 'maxLineInvestment' in node;
+};
 
-    const renderMember = (member: OrganizationNode) => {
+const memberToNode = (member: Member): OrganizationNode => {
+    return {
+        id: member.id,
+        displayId: member.display_id,
+        name: member.name,
+        email: member.email,
+        nameKana: member.name_kana,
+        investmentAmount: member.investment_amount,
+        totalTeamInvestment: member.total_team_investment,
+        maxLineInvestment: member.maxLine || 0,
+        otherLinesInvestment: member.otherLines || 0,
+        level: member.level.toString(),
+        referrerId: member.referrer_id,
+        children: member.children.map(child => memberToNode(child))
+    };
+};
+
+export const TreeChart: React.FC<TreeChartProps> = ({ 
+    member, 
+    depth = 0, 
+    maxDepth = 3,
+    isUserView = false 
+}) => {
+    const nodeData = memberToNode(member);
+    
+    const formatAmount = (amount: number) => {
+        return `$${amount.toLocaleString()} USDT`;
+    };
+
+    const renderNode = (node: OrganizationNode) => {
         return (
             <div className="flex flex-col items-center">
-                <div className="bg-gray-800 rounded-lg p-4 min-w-[200px] border border-blue-500">
+                <div className={`bg-gray-800 rounded-lg p-4 min-w-[200px] border ${
+                    isUserView ? 'border-green-500' : 'border-blue-500'
+                }`}>
                     <div className="text-white">
-                        <div className="font-bold">{member.name}</div>
-                        <div className="text-sm text-gray-400">{member.display_id}</div>
+                        <div className="font-bold">{node.name}</div>
+                        <div className="text-sm text-gray-400">{node.displayId}</div>
                         <div className="mt-2 text-sm">
-                            <div>投資額: {formatAmount(member.investment_amount)}</div>
-                            <div>最大系列: {formatAmount(member.max_line_investment)}</div>
-                            <div>他系列: {formatAmount(member.other_lines_investment)}</div>
+                            <div>投資額: {formatAmount(node.investmentAmount)}</div>
+                            <div>最大系列: {formatAmount(node.maxLineInvestment)}</div>
+                            <div>他系列: {formatAmount(node.otherLinesInvestment)}</div>
                         </div>
                     </div>
                 </div>
-                {member.children && member.children.length > 0 && (
+
+                {node.children && node.children.length > 0 && (
                     <div className="mt-8 flex gap-8">
-                        {member.children.map((child, index) => (
+                        {node.children.map((child, index) => (
                             <div key={child.id} className="relative">
-                                {/* 縦線 */}
                                 <div className="absolute top-[-2rem] left-1/2 w-px h-8 bg-blue-500"></div>
-                                {/* 横線（最初と最後以外） */}
-                                {member.children.length > 1 && index > 0 && (
+                                {node.children.length > 1 && index > 0 && (
                                     <div className="absolute top-[-2rem] left-[-2rem] w-4 h-px bg-blue-500"></div>
                                 )}
-                                {renderMember(child)}
+                                {renderNode(child)}
                             </div>
                         ))}
                     </div>
                 )}
             </div>
-        )
-    }
+        );
+    };
 
     return (
-        <div className="w-full min-w-full overflow-x-auto">
-            <div className="min-w-max p-8 flex justify-center">
-                {renderMember(member)}
+        <div className="w-full overflow-auto">
+            <div className="min-w-max p-8">
+                {nodeData ? renderNode(nodeData) : <div>データがありません</div>}
             </div>
         </div>
-    )
-} 
+    );
+}; 

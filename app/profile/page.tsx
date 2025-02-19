@@ -10,10 +10,10 @@ import { useAuth } from '@/lib/auth'
 
 interface UserProfile {
     id: string
-    name: string
     email: string
-    wallet_address: string
-    wallet_type: string
+    name: string | null
+    wallet_type: string | null
+    wallet_address: string | null
 }
 
 interface CustomWindow extends Window {
@@ -33,8 +33,9 @@ declare const navigator: CustomNavigator;
 
 export default function ProfilePage() {
     const router = useRouter()
-    const { handleLogout } = useAuth()
-    const [user, setUser] = useState<UserProfile | null>(null)
+    const { user: authUser, loading: authLoading, handleLogout } = useAuth()
+    const [profile, setProfile] = useState<UserProfile | null>(null)
+    const [loading, setLoading] = useState(true)
     const [isEditing, setIsEditing] = useState(false)
     const [editForm, setEditForm] = useState({
         name: '',
@@ -51,7 +52,6 @@ export default function ProfilePage() {
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const [isQRModalOpen, setIsQRModalOpen] = useState(false)
-    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
         checkAuth()
@@ -72,6 +72,7 @@ export default function ProfilePage() {
 
     const checkAuth = async () => {
         try {
+            setLoading(true)
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) {
                 router.push('/login')
@@ -103,7 +104,7 @@ export default function ProfilePage() {
                 wallet_address: profile?.wallet_address || null
             }
 
-            setUser(userData)
+            setProfile(userData)
             setEditForm({
                 name: userData.name || '',
                 email: userData.email || '',
@@ -125,7 +126,7 @@ export default function ProfilePage() {
 
         try {
             // 1. メールアドレスの更新（必要な場合）
-            if (editForm.email !== user?.email) {
+            if (editForm.email !== profile?.email) {
                 const { error: authError } = await supabase.auth.updateUser({
                     email: editForm.email
                 })
@@ -148,7 +149,7 @@ export default function ProfilePage() {
                 supabase
                     .from('profiles')
                     .update(updateData)
-                    .eq('id', user?.id)
+                    .eq('id', profile?.id)
             );
 
             // users テーブルの更新
@@ -156,7 +157,7 @@ export default function ProfilePage() {
                 supabase
                     .from('users')
                     .update(updateData)
-                    .eq('id', user?.id)
+                    .eq('id', profile?.id)
             );
 
             // 4. 全ての更新を実行
@@ -175,7 +176,7 @@ export default function ProfilePage() {
                 .send({
                     type: 'broadcast',
                     event: 'profile_updated',
-                    payload: { userId: user?.id }
+                    payload: { userId: profile?.id }
                 });
 
             setSuccess('プロフィールを更新しました')
@@ -225,7 +226,7 @@ export default function ProfilePage() {
         if (typeof window === 'undefined') return;
 
         const url = `https://line.me/R/msg/text/?${encodeURIComponent(
-            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(user?.id || '')}`
+            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(profile?.id || '')}`
         )}`;
         window.open(url, '_blank');
     };
@@ -234,7 +235,7 @@ export default function ProfilePage() {
         if (typeof window === 'undefined') return;
 
         const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(user?.id || '')}`
+            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(profile?.id || '')}`
         )}`;
 
         window.open(url, '_blank');
@@ -244,14 +245,14 @@ export default function ProfilePage() {
         if (typeof window === 'undefined') return;
         
         try {
-            await navigator.clipboard.writeText(user?.id || '');
+            await navigator.clipboard.writeText(profile?.id || '');
             setSuccess('IDをコピーしました');
         } catch (error) {
             setError('IDのコピーに失敗しました');
         }
     };
 
-    if (loading) {
+    if (loading || authLoading) {
         return (
             <div className="min-h-screen bg-gray-900 flex items-center justify-center">
                 <div className="text-white">Loading...</div>
@@ -259,13 +260,18 @@ export default function ProfilePage() {
         )
     }
 
-    if (!user) return null
+    if (!profile) return null
 
     return (
         <div className="min-h-screen bg-gray-900">
-            <Header 
-                user={user} 
+            <Header
+                user={authUser}
                 onLogout={handleLogout}
+                profile={profile ? {
+                    name: profile.name,
+                    email: profile.email
+                } : undefined}
+                isAdmin={false}
             />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-4xl mx-auto px-4 py-8">
@@ -292,23 +298,23 @@ export default function ProfilePage() {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <p className="text-gray-400">ID</p>
-                                                <p className="text-white font-medium">{user?.id}</p>
+                                                <p className="text-white font-medium">{profile?.id}</p>
                                             </div>
                                             <div>
                                                 <p className="text-gray-400">名前</p>
-                                                <p className="text-white font-medium">{user?.name}</p>
+                                                <p className="text-white font-medium">{profile?.name}</p>
                                             </div>
                                             <div>
                                                 <p className="text-gray-400">メールアドレス</p>
-                                                <p className="text-white font-medium">{user?.email}</p>
+                                                <p className="text-white font-medium">{profile?.email}</p>
                                             </div>
                                             <div>
                                                 <p className="text-gray-400">ウォレットアドレス</p>
-                                                <p className="text-white font-medium">{user?.wallet_address}</p>
+                                                <p className="text-white font-medium">{profile?.wallet_address}</p>
                                             </div>
                                             <div>
                                                 <p className="text-gray-400">ウォレットの種類</p>
-                                                <p className="text-white font-medium">{user?.wallet_type}</p>
+                                                <p className="text-white font-medium">{profile?.wallet_type}</p>
                                             </div>
                                         </div>
                                         <div className="mt-6 flex space-x-4">
@@ -445,7 +451,7 @@ export default function ProfilePage() {
                                         <p className="text-gray-400 mb-2">あなたのID</p>
                                         <div className="flex items-center space-x-4">
                                             <p className="text-xl font-mono text-white bg-gray-800 px-4 py-2 rounded">
-                                                {user?.id}
+                                                {profile?.id}
                                             </p>
                                             <button
                                                 onClick={handleCopyId}
@@ -462,14 +468,14 @@ export default function ProfilePage() {
                                         <div className="flex items-center gap-4">
                                             <input
                                                 type="text"
-                                                value={generateReferralUrl(user.id)}
+                                                value={generateReferralUrl(profile.id)}
                                                 readOnly
                                                 className="flex-1 bg-gray-700 text-white px-4 py-2 rounded"
                                             />
                                             <button
                                                 onClick={() => {
-                                                    if (user) {
-                                                        navigator.clipboard.writeText(generateReferralUrl(user.id))
+                                                    if (profile) {
+                                                        navigator.clipboard.writeText(generateReferralUrl(profile.id))
                                                     }
                                                 }}
                                                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -488,7 +494,7 @@ export default function ProfilePage() {
                                                 onClick={() => setIsQRModalOpen(true)}
                                             >
                                                 <QRCodeSVG 
-                                                    value={generateReferralUrl(user.id)}
+                                                    value={generateReferralUrl(profile.id)}
                                                     size={200}
                                                     level="H"
                                                     includeMargin
@@ -533,7 +539,7 @@ export default function ProfilePage() {
                     <div className="fixed inset-0 flex items-center justify-center p-4">
                         <Dialog.Panel className="bg-white rounded-lg p-8">
                             <QRCodeSVG 
-                                value={generateReferralUrl(user.id)}
+                                value={generateReferralUrl(profile.id)}
                                 size={300}
                                 level="H"
                                 includeMargin

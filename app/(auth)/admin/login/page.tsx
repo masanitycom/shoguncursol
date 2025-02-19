@@ -11,37 +11,23 @@ export default function AdminLoginPage() {
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
 
-    const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
-        setLoading(true)
-        setError('')
-
+        
         try {
-            console.log('Attempting admin login with:', email)
-
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
-                password,
+                password
             })
-
-            console.log('Login response:', { data, error })
-
+            
             if (error) throw error
-
-            if (email !== 'testadmin@gmail.com') {
-                throw new Error('管理者アカウントではありません')
+            
+            if (data.user?.email === 'testadmin@gmail.com') {
+                router.push('/admin/dashboard')
             }
-
-            router.push('/admin/dashboard')
-        } catch (error: any) {
-            console.error('Login error:', error)
-            setError(
-                error.message === 'Invalid login credentials'
-                    ? 'メールアドレスまたはパスワードが正しくありません'
-                    : error.message
-            )
-        } finally {
-            setLoading(false)
+        } catch (error) {
+            setError('ログインに失敗しました')
+            console.error(error)
         }
     }
 

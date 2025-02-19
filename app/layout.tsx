@@ -1,6 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { AuthProvider } from '../lib/contexts/auth-context'
+import { AuthProvider } from '../lib/auth'
 import { Noto_Sans_JP } from 'next/font/google'
 
 const notoSansJP = Noto_Sans_JP({

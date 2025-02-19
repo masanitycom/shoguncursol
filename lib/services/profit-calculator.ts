@@ -1,28 +1,16 @@
 import { supabase } from '@/lib/supabase';
-import { isBusinessDay } from './nft-status-calculator';
+import { DailyRate, DailyProfit, WeeklyProfit } from '@/types/dailyProfit';
 
-interface WeeklyProfit {
-    totalProfit: number;
-    startDate: Date;
-    endDate: Date;
-    dailyProfits: {
-        date: Date;
-        rate: number;
-        profit: number;
-    }[];
-}
-
+// WeeklyProfitの計算関数をエクスポート
 export async function calculateWeeklyProfit(
     nftId: string,
     nftPrice: number,
     operationStartDate: Date
 ): Promise<WeeklyProfit> {
-    // 運用開始週の月曜から金曜までの日付を取得
     const weekStartDate = new Date(operationStartDate);
     const weekEndDate = new Date(operationStartDate);
-    weekEndDate.setDate(weekEndDate.getDate() + 4); // 金曜日
+    weekEndDate.setDate(weekEndDate.getDate() + 4);
 
-    // 日利データを取得
     const { data: dailyRates, error } = await supabase
         .from('daily_rates')
         .select('*')
@@ -32,30 +20,69 @@ export async function calculateWeeklyProfit(
 
     if (error) throw error;
 
-    // 日次の利益を計算
-    const dailyProfits = dailyRates?.map(rate => {
-        const dailyProfit = nftPrice * (rate.rate / 100);
-        return {
-            date: new Date(rate.date),
-            rate: rate.rate,
-            profit: dailyProfit
-        };
-    }) || [];
-
-    // 週間の合計利益を計算
-    const totalProfit = dailyProfits.reduce((sum, day) => sum + day.profit, 0);
+    const dailyProfits: DailyProfit[] = dailyRates?.map(rate => ({
+        date: rate.date,
+        rate: rate.rate,
+        profit: nftPrice * (rate.rate / 100)
+    })) || [];
 
     return {
-        totalProfit,
-        startDate: weekStartDate,
-        endDate: weekEndDate,
+        totalProfit: dailyProfits.reduce((sum, day) => sum + day.profit, 0),
+        startDate: weekStartDate.toISOString(),
+        endDate: weekEndDate.toISOString(),
         dailyProfits
     };
 }
 
-// 報酬表示日を計算（運用週の次の月曜日）
+export class ProfitCalculator {
+    static async calculateWeeklyProfit(
+        nftId: string,
+        startDate: Date,
+        endDate: Date
+    ): Promise<WeeklyProfit> {
+        const { data: dailyRates, error } = await supabase
+            .from('daily_rates')
+            .select('*')
+            .eq('nft_id', nftId)
+            .gte('date', startDate.toISOString())
+            .lte('date', endDate.toISOString());
+
+        if (error) throw error;
+
+        const dailyProfits: DailyProfit[] = (dailyRates as DailyRate[]).map(rate => ({
+            date: rate.date,
+            rate: rate.rate,
+            profit: rate.rate
+        }));
+
+        const totalProfit = dailyProfits.reduce((sum, day) => sum + day.profit, 0);
+
+        return {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            totalProfit,
+            dailyProfits
+        };
+    }
+}
+
+export class RewardCalculator {
+    static calculateReward(investment: number, rate: number): number {
+        return investment * (rate / 100);
+    }
+
+    static calculateProfitSharing(params: {
+        totalProfit: number;
+        sharingAmount: number;
+        weekStart: Date;
+        weekEnd: Date;
+    }): Promise<number> {
+        return Promise.resolve(params.sharingAmount);
+    }
+}
+
 export function calculateProfitDisplayDate(operationStartDate: Date): Date {
     const displayDate = new Date(operationStartDate);
-    displayDate.setDate(displayDate.getDate() + 7); // 次の週の月曜日
+    displayDate.setDate(displayDate.getDate() + 7);
     return displayDate;
 } 
