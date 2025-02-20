@@ -318,38 +318,33 @@ const LEVEL_REQUIREMENTS: { [key: string]: LevelRequirement } = {
 };
 
 // レベル計算ロジックを修正
-const calculateLevel = (info: InvestmentInfo): string => {
-    if (process.env.NODE_ENV === 'development') {
-        console.log('Level calculation:', {
-            investment: info.investment_amount,
-            maxLine: info.max_line_investment,
-            otherLines: info.other_lines_investment
-        });
+const calculateLevel = (data: {
+    investment_amount: number;
+    max_line_investment: number;
+    other_lines_investment: number;
+}): string => {
+    console.log('Level calculation:', data);
+
+    // NFT要件チェック
+    if (data.investment_amount < 1000) return 'NONE';
+
+    // 武将以上の判定
+    if (data.max_line_investment >= 3000 && data.other_lines_investment >= 1500) {
+        if (data.max_line_investment >= 600000 && data.other_lines_investment >= 500000) return 'SHOGUN';
+        if (data.max_line_investment >= 300000 && data.other_lines_investment >= 150000) return 'DAIMYO';
+        if (data.max_line_investment >= 100000 && data.other_lines_investment >= 50000) return 'TAIRO';
+        if (data.max_line_investment >= 50000 && data.other_lines_investment >= 25000) return 'ROJU';
+        if (data.max_line_investment >= 10000 && data.other_lines_investment >= 5000) return 'BUGYO';
+        if (data.max_line_investment >= 5000 && data.other_lines_investment >= 2500) return 'DAIKAN';
+        return 'BUSHO';
     }
 
-    // 最低投資額チェック
-    if (!info || info.investment_amount < 1000) {
-        return 'NONE';
-    }
-
-    const levels = ['SHOGUN', 'DAIMYO', 'TAIRO', 'ROJU', 'BUGYO', 'DAIKANN', 'BUSHO', 'ASHIGARU'];
-    
-    for (const level of levels) {
-        const requirement = LEVEL_REQUIREMENTS[level];
-        if (info.max_line_investment >= requirement.conditions.maxLine &&
-            info.other_lines_investment >= requirement.conditions.otherLines) {
-            console.log(`Level matched: ${level}`);
-            return level;
-        }
-    }
-    
-    // 最低投資額を満たしていれば足軽
-    if (info.investment_amount >= 1000) {
-        console.log('Default to ASHIGARU level');
+    // 足軽の判定（最大系列3000未満でも足軽になれる）
+    if (data.max_line_investment >= 1000) {
+        console.log('Qualified for ASHIGARU level');
         return 'ASHIGARU';
     }
 
-    console.log('No level matched, returning NONE');
     return 'NONE';
 };
 

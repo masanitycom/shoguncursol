@@ -403,10 +403,7 @@ const renderMemberNode = (member: OrganizationMember, level: number = 0, isRoot:
 const getLevelLabel = (member: OrganizationMember): string => {
     // NFTデータのデバッグ出力
     console.log('NFT check for', member.display_id, ':', {
-        nfts: member.nft_purchase_requests?.map(nft => ({
-            name: nft.nft_settings.name,
-            status: nft.status
-        })) || []
+        nfts: member.nft_purchase_requests
     });
 
     // SHOGUN NFT1000の所持確認
@@ -435,6 +432,7 @@ const getLevelLabel = (member: OrganizationMember): string => {
         nfts: member.nft_purchase_requests
     };
 
+    // 武将以上の判定
     if (member.max_line_investment >= 600000 && member.other_lines_investment >= 500000) {
         console.log('Level check:', { ...levelCheck, result: 'shogun' });
         return LEVEL_NAMES_JP['shogun'];
@@ -452,9 +450,97 @@ const getLevelLabel = (member: OrganizationMember): string => {
     if (member.max_line_investment >= 3000 && member.other_lines_investment >= 1500) 
         return LEVEL_NAMES_JP['busho'];
 
-    // 最低条件のみ満たす場合
-    console.log('Level check:', { ...levelCheck, result: 'ashigaru' });
-    return LEVEL_NAMES_JP['ashigaru'];
+    // 足軽の判定（傘下の投資額が1000以上必要）
+    if (member.max_line_investment >= 1000) {
+        console.log('Level check:', { ...levelCheck, result: 'ashigaru' });
+        return LEVEL_NAMES_JP['ashigaru'];
+    }
+
+    // どの条件も満たさない場合
+    console.log('Level check:', { ...levelCheck, result: 'none' });
+    return LEVEL_NAMES_JP['none'];
+};
+
+const fetchUserNFTs = async (userId: string) => {
+    const { data: nfts, error } = await supabase
+        .from('nft_purchase_requests')
+        .select(`
+            *,
+            nft_settings (
+                id,
+                name,
+                price
+            )
+        `)
+        .eq('user_id', userId)
+        .eq('status', 'approved');
+
+    if (error) {
+        console.error('Error fetching NFTs:', error);
+        return { nfts: [] };
+    }
+
+    return { nfts: nfts || [] };
+};
+
+// レベル判定ロジックも修正
+const checkLevel = async (userId: string, nfts: any[]): Promise<string> => {
+    console.log('NFT check for', userId, ':', { nfts });
+
+    // NFT要件チェック（1000以上のNFTを保有しているか）
+    const has_shogun_nft = nfts.some(nft => 
+        Number(nft.nft_settings?.price) >= 1000
+    );
+
+    if (!has_shogun_nft) {
+        console.log('Level check:', {
+            user: userId,
+            result: 'none',
+            reason: 'No SHOGUN NFT',
+            nfts
+        });
+        return 'NONE';
+    }
+
+    // 投資ラインを取得
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('max_line_investment, other_lines_investment')
+        .eq('id', userId)
+        .single();
+
+    const max_line = profile?.max_line_investment || 0;
+    const other_lines = profile?.other_lines_investment || 0;
+
+    // デバッグログ
+    console.log('Level check:', {
+        user: userId,
+        max_line,
+        other_lines,
+        has_shogun_nft,
+        nfts,
+    });
+
+    // 武将以上の判定
+    if (max_line >= 3000 && other_lines >= 1500) {
+        if (max_line >= 600000 && other_lines >= 500000) return 'SHOGUN';
+        if (max_line >= 300000 && other_lines >= 150000) return 'DAIMYO';
+        if (max_line >= 100000 && other_lines >= 50000) return 'TAIRO';
+        if (max_line >= 50000 && other_lines >= 25000) return 'ROJU';
+        if (max_line >= 10000 && other_lines >= 5000) return 'BUGYO';
+        if (max_line >= 5000 && other_lines >= 2500) return 'DAIKAN';
+        return 'BUSHO';
+    }
+
+    // 足軽の判定（傘下の投資額が1000以上必要）
+    if (max_line >= 1000) {
+        console.log('Qualified for ASHIGARU level');
+        return 'ASHIGARU';
+    }
+
+    // NFT要件は満たすが、傘下の投資額が不足
+    console.log('Default to NONE - insufficient downline investment');
+    return 'NONE';
 };
 
 export default function OrganizationPage() {
