@@ -60,6 +60,7 @@ export interface OrganizationMember {
     total_team_investment: number;
     referrer_id: string | null;
     children: OrganizationMember[];
+    nft_purchase_requests?: NFTPurchaseRequest[];
 }
 
 // ユーザービュー用のデータ構造
@@ -150,4 +151,14 @@ export interface User {
     created_at: string;
     updated_at: string;
     user_organization_stats: UserOrganizationStats;
+}
+
+export interface NFTPurchaseRequest {
+    id: string;
+    status: string;
+    nft_settings: {
+        id: string;
+        name: string;
+        price: number;
+    };
 } 

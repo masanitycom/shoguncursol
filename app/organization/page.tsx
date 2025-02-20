@@ -403,14 +403,14 @@ const renderMemberNode = (member: OrganizationMember, level: number = 0, isRoot:
 const getLevelLabel = (member: OrganizationMember): string => {
     // NFTデータのデバッグ出力
     console.log('NFT check for', member.display_id, ':', {
-        nfts: member.nft_purchase_requests.map(nft => ({
+        nfts: member.nft_purchase_requests?.map(nft => ({
             name: nft.nft_settings.name,
             status: nft.status
-        }))
+        })) || []
     });
 
     // SHOGUN NFT1000の所持確認
-    const hasShogunNFT = member.nft_purchase_requests.some(nft => 
+    const hasShogunNFT = member.nft_purchase_requests?.some(nft =>
         nft.nft_settings.name.includes('SHOGUN NFT') && 
         nft.status === 'approved'
     ) ?? false;

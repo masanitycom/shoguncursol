@@ -1,4 +1,6 @@
-import { formatDate, formatNumber, formatPrice } from '@/utils/format';
+import { format } from 'date-fns';
+import { NFTOperationStatus } from '@/types/nft';
+import { calculateNFTSchedule } from '@/types/nft';
 
 interface NFTCardProps {
   nft: {
@@ -6,49 +8,55 @@ interface NFTCardProps {
     name: string;
     price: number;
     daily_rate: number;
-    currentDailyRate?: number;
-    image_url: string | null;
-    created_at: string;
+    purchase_date: string;
+    reward_claimed?: boolean;
+    image_url?: string;
   };
 }
 
 export function NFTCard({ nft }: NFTCardProps) {
+  const schedule = calculateNFTSchedule(new Date(nft.purchase_date));
+  const now = new Date();
+
+  const getOperationStatus = (): NFTOperationStatus => {
+    if (now < schedule.operationStartDate) return '待機中';
+    if (now >= schedule.rewardClaimStartDate && now <= schedule.rewardClaimEndDate) return '報酬申請可能';
+    if (nft.reward_claimed) return '報酬申請済み';
+    return '運用中';
+  };
+
+  const status = getOperationStatus();
+
   return (
-    <div className="bg-gray-700 rounded-lg overflow-hidden">
-      <div className="aspect-square relative w-full">
-        {nft.image_url ? (
-          <img
-            src={nft.image_url}
-            alt={nft.name}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-800">
-            <span className="text-gray-400">No image</span>
-          </div>
-        )}
-        <div className="absolute top-2 right-2 bg-emerald-500 text-white text-xs px-2 py-0.5 rounded-full">
-          Active
-        </div>
+    <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="aspect-w-1 aspect-h-1">
+        <img
+          src={nft.image_url || '/images/nft3000.png'}
+          alt={nft.name}
+          className="w-full h-full object-cover"
+        />
       </div>
-      <div className="p-3">
-        <h3 className="font-bold text-white text-sm mb-1">{nft.name}</h3>
-        <div className="space-y-1 text-sm">
-          <p className="text-emerald-400">${nft.price.toLocaleString()}</p>
-          <div className="mt-2">
-            <p className="text-sm text-gray-300">
-              日利上限: {(nft.daily_rate * 100).toFixed(2)}%
-              {nft.currentDailyRate && (
-                <span className="ml-2 text-green-400">
-                  確定日利: {(nft.currentDailyRate * 100).toFixed(2)}%
-                </span>
-              )}
-            </p>
+
+      <div className="p-4">
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-lg font-bold text-white">{nft.name}</h3>
+          <div className={`px-2 py-1 rounded text-sm ${
+            status === '運用中' ? 'bg-green-600' :
+            status === '待機中' ? 'bg-yellow-600' :
+            status === '報酬申請可能' ? 'bg-blue-600' :
+            'bg-gray-600'
+          }`}>
+            {status}
           </div>
-          <p className="text-gray-400">
-            購入日: {new Date(nft.created_at).toLocaleDateString('ja-JP')}
-          </p>
+        </div>
+        
+        <div className="text-sm text-gray-400">
+          <p>購入日: {format(new Date(nft.purchase_date), 'yyyy/MM/dd')}</p>
+          <p>運用開始日: {format(schedule.operationStartDate, 'yyyy/MM/dd')}</p>
+          <p>日利: {(nft.daily_rate * 100).toFixed(2)}%</p>
+          {status === '待機中' && (
+            <p>運用開始まで: {Math.ceil((schedule.operationStartDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))}日</p>
+          )}
         </div>
       </div>
     </div>

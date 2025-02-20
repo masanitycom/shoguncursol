@@ -16,7 +16,7 @@ interface NFT {
 // 日利データの型を修正
 interface DailyRateData {
     date: string
-    rates: { [key: string]: number } // NFT ID をキーとした実際の日利
+    rates: { [key: string]: number | null } // NFT ID をキーとした実際の日利
 }
 
 interface BulkSettings {
@@ -42,6 +42,7 @@ export default function DailyRatesPage() {
         type: 'success' | 'error',
         message: string
     } | null>(null)
+    const [inputValues, setInputValues] = useState<{ [key: string]: string | undefined }>({})
 
     // 週の開始日（月曜日）を取得
     function getMonday(date: Date): string {
@@ -110,15 +111,15 @@ export default function DailyRatesPage() {
     }, [])
 
     useEffect(() => {
-        if (selectedWeek) {
-            initializeWeeklyRates()
+        if (selectedWeek && nfts.length > 0) {
+            initializeWeeklyRates();
         }
     }, [selectedWeek, nfts])
 
     const fetchNFTs = async () => {
         try {
             const { data, error } = await supabase
-                .from('nft_master')
+                .from('nft_settings')
                 .select('*')
                 .order('price', { ascending: true })
 
@@ -130,28 +131,48 @@ export default function DailyRatesPage() {
         }
     }
 
-    const initializeWeeklyRates = () => {
+    const initializeWeeklyRates = async () => {
         try {
-            const weekDates = getWeekDates(selectedWeek)
+            const weekDates = getWeekDates(selectedWeek);
+            
+            // 既存のデータを取得
+            const { data: existingRates, error } = await supabase
+                .from('daily_rates')
+                .select('*')
+                .gte('date', weekDates[0])
+                .lte('date', weekDates[4]);
+
+            if (error) throw error;
+
+            // 初期値を設定
             const initialRates: DailyRateData[] = weekDates.map(date => ({
                 date,
-                rates: Object.fromEntries(nfts.map(nft => [nft.id, 0]))
-            }))
-            setDailyRates(initialRates)
-        } catch (error) {
-            console.error('Error initializing rates:', error)
-            setError('日利の初期化に失敗しました')
-        }
-    }
+                rates: Object.fromEntries(nfts.map(nft => {
+                    // 既存のデータがあれば、その値を使用
+                    const existingRate = existingRates?.find(
+                        rate => rate.date === date && rate.nft_id === nft.id
+                    );
+                    return [nft.id, existingRate ? existingRate.rate : null];
+                }))
+            }));
 
-    const handleRateChange = (date: string, nftId: string, value: string) => {
+            setDailyRates(initialRates);
+            setLoading(false);
+        } catch (error) {
+            console.error('Error initializing rates:', error);
+            setError('日利の初期化に失敗しました');
+            setLoading(false);
+        }
+    };
+
+    const handleRateChange = (date: string, nftId: string, value: number | null) => {
         const newRates = dailyRates.map(day => {
             if (day.date === date) {
                 return {
                     ...day,
                     rates: {
                         ...day.rates,
-                        [nftId]: Number(value) || 0
+                        [nftId]: value
                     }
                 }
             }
@@ -172,37 +193,77 @@ export default function DailyRatesPage() {
             const endDate = new Date(startDate)
             endDate.setDate(startDate.getDate() + 4)
 
-            await supabase
+            console.log('Deleting rates for:', {
+                startDate: startDate.toISOString().split('T')[0],
+                endDate: endDate.toISOString().split('T')[0]
+            });
+
+            const { error: deleteError } = await supabase
                 .from('daily_rates')
                 .delete()
-                .gte('date', startDate.toISOString())
-                .lte('date', endDate.toISOString())
+                .gte('date', startDate.toISOString().split('T')[0])
+                .lte('date', endDate.toISOString().split('T')[0])
+
+            if (deleteError) throw deleteError
 
             // 新しいレートを登録
             const newRates = dailyRates.flatMap(day => 
-                Object.entries(day.rates).map(([nftId, rate]) => ({
-                    date: day.date,
-                    nft_id: nftId,
-                    rate: rate
-                }))
+                Object.entries(day.rates)
+                    .filter(([_, rate]) => rate !== null && rate > 0)
+                    .map(([nftId, rate]) => ({
+                        date: day.date,
+                        nft_id: nftId,
+                        rate: rate,
+                        created_at: new Date().toISOString()
+                    }))
             )
 
-            const { error } = await supabase
+            console.log('Saving new rates:', newRates);
+
+            if (newRates.length === 0) {
+                console.log('No rates to save');
+                setNotification({
+                    type: 'success',
+                    message: '設定をクリアしました'
+                })
+                setLoading(false)
+                return
+            }
+
+            const { error: insertError } = await supabase
                 .from('daily_rates')
                 .insert(newRates)
 
-            if (error) throw error
+            if (insertError) throw insertError
+
+            console.log('Rates saved successfully');
+
+            // 保存確認のためのクエリ
+            const { data: savedRates, error: checkError } = await supabase
+                .from('daily_rates')
+                .select('*')
+                .gte('date', startDate.toISOString().split('T')[0])
+                .lte('date', endDate.toISOString().split('T')[0])
+
+            console.log('Saved rates:', savedRates);
+
+            if (checkError) {
+                console.error('Error checking saved rates:', checkError);
+            }
 
             setNotification({
                 type: 'success',
                 message: '日利を設定しました'
             })
+
+            await initializeWeeklyRates()
+
         } catch (error: any) {
             console.error('Error saving daily rates:', error)
             setError(error.message)
             setNotification({
                 type: 'error',
-                message: 'エラーが発生しました'
+                message: 'エラーが発生しました: ' + error.message
             })
         } finally {
             setLoading(false)
@@ -339,20 +400,69 @@ export default function DailyRatesPage() {
                                             </td>
                                             {dailyRates.map(day => (
                                                 <td key={day.date} className="px-6 py-4">
-                                                    <input
-                                                        type="number"
-                                                        step="0.001"
-                                                        min="0"
-                                                        max={nft.daily_rate * 100}
-                                                        value={(day.rates[nft.id] * 100).toFixed(3)}
-                                                        onChange={(e) => handleRateChange(
-                                                            day.date,
-                                                            nft.id,
-                                                            (Number(e.target.value) / 100).toString()
-                                                        )}
-                                                        className="w-20 bg-gray-700 text-white px-2 py-1 rounded"
-                                                    />
-                                                    <span className="text-gray-400 ml-1">%</span>
+                                                    <div className="relative flex items-center">
+                                                        <input
+                                                            type="text"
+                                                            value={
+                                                                inputValues[`${day.date}-${nft.id}`] !== undefined
+                                                                    ? inputValues[`${day.date}-${nft.id}`]
+                                                                    : day.rates[nft.id] === null 
+                                                                        ? '' 
+                                                                        : ((day.rates[nft.id] || 0) * 100).toFixed(3)
+                                                            }
+                                                            onChange={(e) => {
+                                                                const value = e.target.value;
+                                                                setInputValues({
+                                                                    ...inputValues,
+                                                                    [`${day.date}-${nft.id}`]: value
+                                                                });
+
+                                                                if (value === '') {
+                                                                    handleRateChange(day.date, nft.id, null);
+                                                                    return;
+                                                                }
+
+                                                                const numValue = parseFloat(value);
+                                                                if (!isNaN(numValue) && numValue <= nft.daily_rate * 100) {
+                                                                    handleRateChange(day.date, nft.id, numValue / 100);
+                                                                }
+                                                            }}
+                                                            onBlur={(e) => {
+                                                                const value = e.target.value;
+                                                                
+                                                                setInputValues({
+                                                                    ...inputValues,
+                                                                    [`${day.date}-${nft.id}`]: undefined
+                                                                });
+
+                                                                if (value === '') {
+                                                                    handleRateChange(day.date, nft.id, null);
+                                                                    return;
+                                                                }
+
+                                                                const numValue = parseFloat(value);
+                                                                if (!isNaN(numValue) && numValue <= nft.daily_rate * 100) {
+                                                                    handleRateChange(day.date, nft.id, numValue / 100);
+                                                                }
+                                                            }}
+                                                            className="w-24 bg-gray-700 text-white px-3 py-2 rounded text-right pr-8"
+                                                            placeholder="0.000"
+                                                        />
+                                                        <span className="absolute right-3 text-gray-400">%</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                handleRateChange(
+                                                                    day.date,
+                                                                    nft.id,
+                                                                    nft.daily_rate
+                                                                );
+                                                            }}
+                                                            className="ml-2 text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-2 rounded"
+                                                            title="最大値に設定"
+                                                        >
+                                                            Max
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             ))}
                                         </tr>
@@ -415,16 +525,20 @@ export default function DailyRatesPage() {
                                 <div>
                                     <label className="block text-gray-300 mb-2">日利 (%)</label>
                                     <input
-                                        type="number"
-                                        step="0.001"
-                                        min="0"
-                                        max="2"
+                                        type="text"
                                         value={bulkSettings.rate}
-                                        onChange={(e) => setBulkSettings({
-                                            ...bulkSettings,
-                                            rate: Number(e.target.value)
-                                        })}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            const numValue = parseFloat(value);
+                                            if (value === '' || (!isNaN(numValue) && numValue >= 0)) {
+                                                setBulkSettings({
+                                                    ...bulkSettings,
+                                                    rate: numValue || 0
+                                                });
+                                            }
+                                        }}
                                         className="w-full bg-gray-700 text-white px-4 py-2 rounded"
+                                        placeholder="0.000"
                                     />
                                 </div>
 
