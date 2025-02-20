@@ -31,30 +31,177 @@ interface NFTSettings {
 
 interface NFTData {
     id: string;
-    user_id: string;
-    nft_id: string;
     status: string;
-    nft_settings: NFTSettings;
+    nft_settings: {
+        id: string;
+        name: string;
+        price: number;
+    };
 }
 
-// レベル計算用の定数
-const LEVEL_THRESHOLDS = {
-    NONE: 0,
-    BRONZE: 3000,
-    SILVER: 10000,
-    GOLD: 30000,
-    PLATINUM: 100000,
-    DIAMOND: 300000
+// 正しいレベル要件の定義
+const LEVEL_REQUIREMENTS = {
+    NONE: {
+        requiredNFT: 'NONE',
+        totalInvestment: 0
+    },
+    ASHIGARU: {
+        requiredNFT: 'SHOGUN NFT1000',
+        totalInvestment: 1000
+    },
+    BUSHO: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 3000,
+        otherLinesInvestment: 1500
+    },
+    DAIKAN: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 5000,
+        otherLinesInvestment: 2500
+    },
+    BUGYO: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 10000,
+        otherLinesInvestment: 5000
+    },
+    ROJU: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 50000,
+        otherLinesInvestment: 25000
+    },
+    TAIRO: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 100000,
+        otherLinesInvestment: 50000
+    },
+    DAIMYO: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 300000,
+        otherLinesInvestment: 150000
+    },
+    SHOGUN: {
+        requiredNFT: 'SHOGUN NFT1000',
+        maxLineInvestment: 600000,
+        otherLinesInvestment: 500000
+    }
 };
 
-// レベル計算関数
-const calculateLevel = (investment: number): string => {
-    if (investment >= LEVEL_THRESHOLDS.DIAMOND) return 'diamond';
-    if (investment >= LEVEL_THRESHOLDS.PLATINUM) return 'platinum';
-    if (investment >= LEVEL_THRESHOLDS.GOLD) return 'gold';
-    if (investment >= LEVEL_THRESHOLDS.SILVER) return 'silver';
-    if (investment >= LEVEL_THRESHOLDS.BRONZE) return 'bronze';
-    return 'none';
+// 総投資額と総ユーザー数の再帰的計算
+const calculateTotalStats = (members: Member[]): { investment: number, users: number } => {
+    return members.reduce((acc, member) => {
+        const childStats = calculateTotalStats(member.children);
+        return {
+            investment: acc.investment + member.investment_amount + childStats.investment,
+            users: acc.users + 1 + childStats.users
+        };
+    }, { investment: 0, users: 0 });
+};
+
+// レベル計算関数の修正
+const calculateLevel = async (node: any): Promise<string> => {
+    // NFTデータを取得
+    const { data: nftData } = await supabase
+        .from('nft_purchase_requests')
+        .select(`
+            id,
+            status,
+            nft_settings (
+                id,
+                name,
+                price
+            )
+        `)
+        .eq('user_id', node.id)
+        .eq('status', 'approved');
+
+    // NFT要件チェック（型を修正）
+    const hasRequiredNFT = (nftData || []).some((nft: {
+        status: string;
+        nft_settings: { price: number }
+    }) => Number(nft.nft_settings.price) >= 1000);
+
+    if (!hasRequiredNFT) return 'NONE';
+
+    // 投資額とライン投資額を使用してレベルを判定
+    const maxLineInvestment = node.max_line_investment || 0;
+    const otherLinesInvestment = node.other_lines_investment || 0;
+    const teamInvestment = node.total_team_investment || 0;
+
+    // 武将以上の判定
+    if (maxLineInvestment >= 3000 && otherLinesInvestment >= 1500) {
+        if (maxLineInvestment >= 600000 && otherLinesInvestment >= 500000) return 'SHOGUN';
+        if (maxLineInvestment >= 300000 && otherLinesInvestment >= 150000) return 'DAIMYO';
+        if (maxLineInvestment >= 100000 && otherLinesInvestment >= 50000) return 'TAIRO';
+        if (maxLineInvestment >= 50000 && otherLinesInvestment >= 25000) return 'ROJU';
+        if (maxLineInvestment >= 10000 && otherLinesInvestment >= 5000) return 'BUGYO';
+        if (maxLineInvestment >= 5000 && otherLinesInvestment >= 2500) return 'DAIKAN';
+        return 'BUSHO';
+    }
+
+    // 足軽の判定を修正
+    // total_team_investmentではなく、childrenInvestmentを使用
+    const childrenInvestment = node.children?.reduce((sum: number, child: any) => 
+        sum + (child.investment_amount || 0), 0) || 0;
+
+    // 傘下の投資額のみで判定
+    return childrenInvestment >= 1000 ? 'ASHIGARU' : 'NONE';
+};
+
+const calculateInvestmentLines = (node: any, profiles: any[]): { 
+    maxLine: number, 
+    otherLines: number 
+} => {
+    // 直接の紹介者を取得
+    const directReferrals = profiles.filter(p => p.referrer_id === node.id);
+    
+    if (directReferrals.length === 0) {
+        return { maxLine: 0, otherLines: 0 };
+    }
+
+    // 各ラインの投資額を計算
+    const lineInvestments = directReferrals.map(referral => {
+        // 直接の紹介者の投資額を計算
+        const referralInvestment = referral.nft_purchase_requests
+            ?.filter((nft: any) => nft.status === 'approved')
+            ?.reduce((sum: number, nft: any) => 
+                sum + Number(nft.nft_settings?.price || 0), 0) || 0;
+
+        // 配下のユーザーを取得
+        const referralTree = profiles.filter(p => {
+            let current = p;
+            while (current.referrer_id) {
+                if (current.referrer_id === referral.id) return true;
+                current = profiles.find(p2 => p2.id === current.referrer_id);
+            }
+            return false;
+        });
+
+        // 配下の投資額を計算
+        const treeInvestment = referralTree.reduce((sum: number, p) => {
+            const userInvestment = p.nft_purchase_requests
+                ?.filter((nft: any) => nft.status === 'approved')
+                ?.reduce((s: number, nft: any) => 
+                    s + Number(nft.nft_settings?.price || 0), 0) || 0;
+            return sum + userInvestment;
+        }, 0);
+
+        // ラインの合計投資額（直接の紹介者 + 配下）
+        return referralInvestment + treeInvestment;
+    });
+
+    console.log(`Line investments for ${node.display_id}:`, lineInvestments);
+
+    // 最大ラインと他のライン合計を計算
+    const maxLine = Math.max(...lineInvestments, 0);
+    const otherLines = lineInvestments.reduce((sum, inv) => sum + inv, 0) - maxLine;
+
+    console.log(`Investment lines for ${node.display_id}:`, {
+        lineInvestments,
+        maxLine,
+        otherLines
+    });
+
+    return { maxLine, otherLines };
 };
 
 export default function AdminOrganizationPage() {
@@ -74,7 +221,18 @@ export default function AdminOrganizationPage() {
                 // 全ユーザーのプロフィールを取得
                 const { data: profiles, error: profileError } = await supabase
                     .from('profiles')
-                    .select('*')
+                    .select(`
+                        *,
+                        nft_purchase_requests (
+                            id,
+                            status,
+                            nft_settings (
+                                id,
+                                name,
+                                price
+                            )
+                        )
+                    `)
 
                 if (profileError) throw profileError
                 
@@ -84,15 +242,12 @@ export default function AdminOrganizationPage() {
                 // 組織ツリーを構築
                 const organizationTree = await buildOrganizationTree(profiles)
                 
-                // 統計情報の計算
-                const totalInvestment = organizationTree.reduce((sum, member) => 
-                    sum + member.investment_amount, 0)
-                const totalUsers = organizationTree.length
-
+                // 統計情報の計算を修正
+                const stats = calculateTotalStats(organizationTree);
                 setStats({
-                    totalInvestment,
-                    totalUsers
-                })
+                    totalInvestment: stats.investment,
+                    totalUsers: stats.users
+                });
 
                 setOrganization(organizationTree)
             } catch (error) {
@@ -112,37 +267,57 @@ export default function AdminOrganizationPage() {
             const rootNodes = profiles.filter(p => !p.referrer_id)
 
             const buildTree = async (node: any): Promise<Member> => {
+                // デバッグ: 現在処理中のノード
+                console.log('Building tree for node:', node.display_id);
+
                 const children = await Promise.all(
                     profiles
                         .filter(p => p.referrer_id === node.id)
                         .map(child => buildTree(child))
                 )
 
-                // NFTデータを取得
-                const { data: nftData, error: nftError } = await supabase
-                    .from('nft_purchase_requests')
-                    .select(`
-                        id,
-                        status,
-                        nft_settings (
-                            id,
-                            price
-                        )
-                    `)
-                    .eq('user_id', node.id)
-                    .eq('status', 'approved')
+                // NFTデータはすでにプロフィールに含まれている
+                const nftData = node.nft_purchase_requests || [];
+                
+                // 投資額を計算（型を追加）
+                const investment = nftData
+                    .filter((nft: { status: string }) => nft.status === 'approved')
+                    .reduce((sum: number, nft: { nft_settings: { price: number } }) => {
+                        return sum + Number(nft.nft_settings?.price || 0);
+                    }, 0);
 
-                if (nftError) throw nftError
-
-                // 投資額を計算
-                const investment = (nftData || []).reduce((sum: number, nft: any) => {
-                    return sum + Number(nft.nft_settings?.price || 0)
-                }, 0)
+                console.log(`Investment calculation for ${node.display_id}:`, {
+                    nftData,
+                    investment,
+                    status: nftData.map(n => n.status)
+                });
 
                 // 子ノードの投資額を合算
-                const totalTeamInvestment = investment + children.reduce((sum, child) => 
-                    sum + child.total_team_investment, 0
-                )
+                const childrenInvestment = children.reduce((sum, child) => 
+                    sum + (child.investment_amount || 0), 0);
+                
+                // デバッグ: 子ノードの投資額
+                console.log(`Children investment for ${node.display_id}:`, childrenInvestment);
+
+                const totalTeamInvestment = investment + childrenInvestment;
+
+                // デバッグ: 合計チーム投資額
+                console.log(`Total team investment for ${node.display_id}:`, totalTeamInvestment);
+
+                // 投資ラインを計算
+                const { maxLine, otherLines } = calculateInvestmentLines(node, profiles);
+
+                // レベルを非同期で取得
+                const level = await calculateLevel({
+                    ...node,
+                    investment_amount: investment,
+                    max_line_investment: maxLine,
+                    other_lines_investment: otherLines,
+                    total_team_investment: totalTeamInvestment,
+                    children: children
+                });
+
+                console.log(`Setting level for ${node.display_id}:`, level); // デバッグ用
 
                 return {
                     id: node.id,
@@ -151,10 +326,10 @@ export default function AdminOrganizationPage() {
                     name_kana: node.name_kana || '',
                     email: node.email || '',
                     display_name: node.display_name || '',
-                    level: calculateLevel(investment),
+                    level: level,
                     investment_amount: investment,
-                    max_line_investment: node.max_line_investment || 0,
-                    other_lines_investment: node.other_lines_investment || 0,
+                    max_line_investment: maxLine,
+                    other_lines_investment: otherLines,
                     total_team_investment: totalTeamInvestment,
                     referrer_id: node.referrer_id,
                     children: children
