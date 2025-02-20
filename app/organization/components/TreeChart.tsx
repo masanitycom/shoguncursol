@@ -85,10 +85,10 @@ export const TreeChart: React.FC<TreeChartProps> = ({
                             {hasChildren && (
                                 <>
                                     <div className="text-gray-400">
-                                        最大系列: <span className="text-white">${formatAmount(member.maxLine)}</span>
+                                        最大系列: <span className="text-white">${formatAmount(member.max_line_investment)}</span>
                                     </div>
                                     <div className="text-gray-400">
-                                        他系列全体: <span className="text-white">${formatAmount(member.otherLines)}</span>
+                                        他系列全体: <span className="text-white">${formatAmount(member.other_lines_investment)}</span>
                                     </div>
                                 </>
                             )}
