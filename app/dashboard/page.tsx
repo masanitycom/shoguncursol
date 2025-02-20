@@ -397,19 +397,25 @@ const calculateTotalRewards = (nfts: NFTWithReward[]): number => {
     return nfts.reduce((total, nft) => total + (nft.lastWeekReward || 0), 0);
 };
 
-// 紹介者数を取得する関数
+// 紹介者数を取得する関数を修正
 const fetchReferralCount = async (userId: string) => {
     try {
-        const { data, error } = await supabase
+        // 直接の紹介者を取得
+        const { data: directReferrals, error } = await supabase
             .from('profiles')
-            .select('count')
+            .select('id')
             .eq('referrer_id', userId);
 
-        if (error) throw error;
-        
-        return data?.length || 0;
+        if (error) {
+            console.error('Error fetching referrals:', error);
+            throw error;
+        }
+
+        // 組織図に影響を与えないよう、既存のデータ構造を維持
+        console.log('Fetched referral count:', directReferrals?.length || 0);
+        return directReferrals?.length || 0;
     } catch (error) {
-        console.error('Error fetching referral count:', error);
+        console.error('Error in fetchReferralCount:', error);
         return 0;
     }
 };
