@@ -114,11 +114,14 @@ const calculateLevel = async (node: any): Promise<string> => {
         .eq('user_id', node.id)
         .eq('status', 'approved');
 
-    // NFT要件チェック（型を修正）
-    const hasRequiredNFT = (nftData || []).some((nft: {
-        status: string;
-        nft_settings: { price: number }
-    }) => Number(nft.nft_settings.price) >= 1000);
+    // NFT要件チェックの部分を修正
+    const hasRequiredNFT = (nftData || []).some((nft: any) => {
+        const nftSettings = nft.nft_settings;
+        if (!nftSettings || typeof nftSettings.price !== 'number') {
+            return false;
+        }
+        return nftSettings.price >= 1000;
+    });
 
     if (!hasRequiredNFT) return 'NONE';
 
@@ -289,7 +292,7 @@ export default function AdminOrganizationPage() {
                 console.log(`Investment calculation for ${node.display_id}:`, {
                     nftData,
                     investment,
-                    status: nftData.map(n => n.status)
+                    status: nftData.map((nft: NFTData) => nft.status)
                 });
 
                 // 子ノードの投資額を合算

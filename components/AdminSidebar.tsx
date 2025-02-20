@@ -16,8 +16,11 @@ import {
     ChevronDownIcon,
     BanknotesIcon,
     ChatBubbleLeftIcon,
-    ShoppingCartIcon
+    ShoppingCartIcon,
+    PlusCircleIcon,
+    TrophyIcon
 } from '@heroicons/react/24/outline'
+import { ListBulletIcon } from '@heroicons/react/24/outline'
 import { supabase } from '@/lib/supabase'
 
 const menuGroups = [
@@ -40,7 +43,10 @@ const menuGroups = [
         items: [
             { name: '報酬計算', href: '/admin/rewards/calculate', icon: ChartBarIcon },
             { name: '日利設定', href: '/admin/daily-rates', icon: ChartBarIcon },
-            { name: '報酬管理', href: '/admin/rewards/manage', icon: BanknotesIcon }
+            { name: '報酬管理', href: '/admin/rewards/manage', icon: BanknotesIcon },
+            { name: '週次利益登録', href: '/admin/weekly-profits/register', icon: PlusCircleIcon },
+            { name: '週次利益管理', href: '/admin/weekly-profits/manage', icon: ListBulletIcon },
+            { name: '天下統一ボーナス', href: '/admin/conquest-bonus', icon: TrophyIcon }
         ]
     },
     {

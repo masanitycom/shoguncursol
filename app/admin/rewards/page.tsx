@@ -12,6 +12,8 @@ import {
     ArrowPathIcon,
     ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
+import { WeeklyPayoutSummary } from '@/types/reward'
+import { formatDate, formatCurrency } from '@/lib/utils'
 
 declare const window: Window & typeof globalThis
 declare const document: Document
@@ -44,7 +46,7 @@ interface UserRewardInfo {
     last_reward_date: string
 }
 
-export default function RewardsPage() {
+export default function RewardsManagement() {
     const router = useRouter()
     const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
@@ -52,10 +54,14 @@ export default function RewardsPage() {
     const [searchTerm, setSearchTerm] = useState('')
     const [rewardRequests, setRewardRequests] = useState<RewardRequest[]>([])
     const [userRewardInfo, setUserRewardInfo] = useState<UserRewardInfo[]>([])
+    const [currentWeek, setCurrentWeek] = useState<WeeklyPayoutSummary | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [profitShareRate, setProfitShareRate] = useState<ProfitShareRate>(20)
 
     useEffect(() => {
         checkAuth()
         fetchRewardRequests()
+        fetchWeeklySummary()
     }, [])
 
     const checkAuth = async () => {
@@ -102,6 +108,59 @@ export default function RewardsPage() {
 
     const exportToCsv = () => {
         // CSVエクスポート処理
+    }
+
+    const fetchWeeklySummary = async () => {
+        try {
+            // 1. 会社の週次利益を取得
+            const { data: companyProfit } = await supabase
+                .from('weekly_company_profits')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single()
+
+            // 2. NFTの日次報酬を集計
+            const { data: dailyRewards } = await supabase
+                .from('nft_daily_profits')
+                .select(`
+                    amount,
+                    nft_settings (
+                        name,
+                        price
+                    ),
+                    user_id
+                `)
+                .gte('created_at', companyProfit.start_date)
+                .lte('created_at', companyProfit.end_date)
+
+            // 3. 天下統一ボーナスの計算
+            const qualifiedUsers = await fetchQualifiedUsers()
+            const unificationBonus = calculateUnificationBonus(
+                companyProfit.amount,
+                profitShareRate,
+                qualifiedUsers
+            )
+
+            // 4. サマリーを作成
+            const summary: WeeklyPayoutSummary = {
+                weekId: companyProfit.week_id,
+                startDate: new Date(companyProfit.start_date),
+                endDate: new Date(companyProfit.end_date),
+                companyProfit: companyProfit.amount,
+                payouts: {
+                    dailyRewards: summarizeDailyRewards(dailyRewards),
+                    unificationBonus
+                },
+                totalPayoutAmount: calculateTotalPayout(dailyRewards, unificationBonus)
+            }
+
+            setCurrentWeek(summary)
+        } catch (error) {
+            console.error('Error fetching weekly summary:', error)
+        } finally {
+            setLoading(false)
+        }
     }
 
     if (!user) return null

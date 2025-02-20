@@ -12,7 +12,9 @@ import {
     BanknotesIcon,
     ChartBarIcon,
     ShoppingCartIcon,
-    GiftIcon
+    GiftIcon,
+    CheckCircleIcon,
+    ListBulletIcon
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@/lib/auth'
 import { IconType } from 'react-icons'
@@ -69,17 +71,24 @@ export default function AdminDashboardPage() {
     const router = useRouter()
     const { handleLogout } = useAuth()
     const [user, setUser] = useState<any>(null)
-    const [stats, setStats] = useState<DashboardStats>({
+    const [stats, setStats] = useState({
         totalUsers: 0,
         activeUsers: 0,
-        totalInvestment: 0
+        totalInvestment: 0,
+        monthlyRevenue: 0,
+        nftRequests: 0,
+        airdropRequests: 0
     })
     const [loading, setLoading] = useState(true)
     const [pendingPurchases, setPendingPurchases] = useState<NFTPurchaseRequest[]>([])
+    const [pendingRewards, setPendingRewards] = useState<any[]>([])
 
     useEffect(() => {
-        checkAuth()
-        fetchDashboardStats()
+        const init = async () => {
+            await checkAuth()
+            await fetchDashboardStats()
+        }
+        init()
     }, [])
 
     const checkAuth = async () => {
@@ -93,37 +102,60 @@ export default function AdminDashboardPage() {
 
     const fetchDashboardStats = async () => {
         try {
-            const { data, error } = await supabase
-                .from('users')
+            setLoading(true);
+            
+            // 各種統計情報を並列で取得
+            const [userCount, nftRequestCount, profilesData] = await Promise.all([
+                fetchUserCount(),
+                fetchNFTPurchaseRequestCount(),
+                supabase
+                    .from('profiles')
+                    .select('investment_amount')
+            ]);
+
+            // NFTデータから総投資額を計算
+            const { data: nftData } = await supabase
+                .from('nft_purchase_requests')
                 .select(`
-                    id,
-                    investment_amount,
-                    level
+                    status,
+                    nft_settings!inner (
+                        price
+                    )
                 `)
+                .eq('status', 'approved');
 
-            if (error) throw error
+            // 総投資額の計算
+            const totalInvestment = (nftData || []).reduce((sum, nft) => 
+                sum + (Number(nft.nft_settings?.price) || 0), 0);
 
-            // 総投資額の計算（数値型に変換して計算）
-            const totalInvestment = data?.reduce((sum, user) => 
-                sum + (Number(user.investment_amount) || 0), 0) || 0
+            // アクティブユーザー（NFTを保有しているユーザー）
+            const { data: activeUserData, count: activeCount } = await supabase
+                .from('nft_purchase_requests')
+                .select('user_id', { count: 'exact', head: true })
+                .eq('status', 'approved');
 
-            // アクティブユーザー数（投資額が0より大きいユーザー）
-            const activeUsers = data?.filter(user => 
-                Number(user.investment_amount) > 0).length || 0
+            // エアドロップ申請数を取得
+            const { count: airdropCount } = await supabase
+                .from('task_responses')
+                .select('*', { count: 'exact' })
+                .eq('status', 'pending');
 
             // 統計情報を更新
             setStats({
+                totalUsers: userCount,
+                activeUsers: activeCount || 0,
                 totalInvestment,
-                totalUsers: data?.length || 0,
-                activeUsers
-            })
+                monthlyRevenue: 0, // 必要に応じて計算
+                nftRequests: nftRequestCount,
+                airdropRequests: airdropCount || 0
+            });
 
         } catch (error) {
-            console.error('Error fetching stats:', error)
+            console.error('Error fetching dashboard stats:', error);
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     const fetchPendingPurchases = async () => {
         try {
@@ -178,6 +210,69 @@ export default function AdminDashboardPage() {
         }, 0);
     }
 
+    const fetchUserCount = async () => {
+        const { data, error, count } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact' });  // count: 'exact' を追加
+
+        if (error) {
+            console.error('Error fetching user count:', error);
+            return 0;
+        }
+
+        return count || 0;
+    };
+
+    const fetchNFTPurchaseRequestCount = async () => {
+        const { data, error, count } = await supabase
+            .from('nft_purchase_requests')
+            .select('*', { count: 'exact' })
+            .eq('status', 'pending');  // pending状態のみカウント
+
+        if (error) {
+            console.error('Error fetching NFT purchase requests:', error);
+            return 0;
+        }
+
+        return count || 0;
+    };
+
+    const fetchPendingRewards = async () => {
+        const currentWeek = getCurrentWeek();
+        
+        // 未払いの報酬を取得
+        const { data: rewards, error } = await supabase
+            .from('weekly_rewards')
+            .select(`
+                id,
+                week_id,
+                start_date,
+                end_date,
+                total_amount,
+                status,
+                user_rewards (
+                    user_id,
+                    display_id,
+                    amount,
+                    nft_count
+                )
+            `)
+            .eq('status', 'pending')
+            .order('start_date', { ascending: false })
+            .limit(5);
+
+        if (error) {
+            console.error('Error fetching rewards:', error);
+            return [];
+        }
+
+        return rewards;
+    };
+
+    const handlePayRewards = async (weekId: string) => {
+        // Implementation of handlePayRewards function
+    };
+
     if (!user) return null
 
     return (
@@ -224,21 +319,28 @@ export default function AdminDashboardPage() {
                         />
                         <StatCard
                             title="NFT購入申請"
-                            value={stats.pendingPurchases}
+                            value={stats.nftRequests}
                             loading={loading}
                             suffix="件"
                             icon={ShoppingCartIcon}
                             href="/admin/nfts/purchase-requests"
-                            highlight={stats.pendingPurchases > 0}
+                            highlight={stats.nftRequests > 0}
                         />
                         <StatCard
                             title="保留中のエアドロ申請"
-                            value={stats.pendingAirdrops}
+                            value={stats.airdropRequests}
                             loading={loading}
                             suffix="件"
                             icon={GiftIcon}
                             href="/admin/rewards/manage"
-                            highlight={stats.pendingAirdrops > 0}
+                            highlight={stats.airdropRequests > 0}
+                        />
+                    </div>
+
+                    <div className="mt-8">
+                        <RewardsSummaryCard 
+                            pendingRewards={pendingRewards}
+                            onPayRewards={handlePayRewards}
                         />
                     </div>
                 </main>
@@ -295,5 +397,85 @@ const StatCard = ({ title, value, loading, prefix, suffix, icon: Icon, href, hig
                 </div>
             </div>
         </CardWrapper>
+    )
+}
+
+interface RewardsSummaryCardProps {
+    pendingRewards: any[];
+    onPayRewards: (weekId: string) => void;
+}
+
+const RewardsSummaryCard = ({ pendingRewards, onPayRewards }: RewardsSummaryCardProps) => {
+    return (
+        <div className="bg-gray-800 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-white">未払い報酬</h2>
+                <Link 
+                    href="/admin/rewards"
+                    className="text-blue-400 hover:text-blue-300 flex items-center gap-2"
+                >
+                    <ListBulletIcon className="w-4 h-4" />
+                    <span>詳細を表示</span>
+                </Link>
+            </div>
+
+            {pendingRewards.length > 0 ? (
+                <div className="space-y-4">
+                    {pendingRewards.map((week) => (
+                        <div key={week.id} className="bg-gray-700/50 rounded-lg p-4">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <div className="text-white font-medium">
+                                        {formatDate(week.start_date)} 〜 {formatDate(week.end_date)}
+                                    </div>
+                                    <div className="text-gray-400 text-sm mt-1">
+                                        対象ユーザー: {week.user_count}人
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-white font-bold">
+                                        ${week.total_amount.toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
+                                <div className="bg-gray-800/50 p-2 rounded">
+                                    <div className="text-gray-400">日次報酬</div>
+                                    <div className="text-white">
+                                        ${week.daily_rewards_amount.toLocaleString()}
+                                    </div>
+                                </div>
+                                <div className="bg-gray-800/50 p-2 rounded">
+                                    <div className="text-gray-400">天下統一ボーナス</div>
+                                    <div className="text-white">
+                                        ${week.conquest_rewards_amount.toLocaleString()}
+                                    </div>
+                                </div>
+                                <div className="bg-gray-800/50 p-2 rounded">
+                                    <div className="text-gray-400">エアドロップ</div>
+                                    <div className="text-white">
+                                        ${week.airdrop_amount.toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => onPayRewards(week.id)}
+                                className="mt-4 px-4 py-2 bg-green-600 hover:bg-green-500 
+                                         text-white rounded-lg flex items-center gap-2 ml-auto"
+                            >
+                                <CheckCircleIcon className="w-5 h-5" />
+                                <span>支払い実行</span>
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-gray-400 text-center py-8">
+                    未払いの報酬はありません
+                </div>
+            )}
+        </div>
     )
 } 
