@@ -117,4 +117,34 @@ export interface WeeklyPayoutSummary {
         };
     };
     totalPayoutAmount: number;  // 支払い総額
+}
+
+// 週間利益のプレビュー用
+export interface WeeklyProfitPreview {
+    weekStartDate: Date;
+    weekEndDate: Date;
+    companyProfit: number;      // 会社の総利益
+    distributionRate: number;    // 分配率（20-30%）
+    distributions: {
+        // NFTの日次報酬
+        dailyRewards: {
+            total: number;
+            details: Array<{
+                nftType: string;
+                count: number;
+                amount: number;
+            }>;
+        };
+        // 天下統一ボーナス
+        unificationBonus: {
+            total: number;
+            byLevel: Array<{
+                level: string;
+                userCount: number;
+                amount: number;
+                perUser: number;
+            }>;
+        };
+    };
+    totalDistribution: number;   // 総分配額
 } 
