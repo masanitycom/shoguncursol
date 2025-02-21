@@ -1,8 +1,56 @@
 import { supabase } from '@/lib/supabase';
 import { WeeklyProfitPreview } from '@/types/reward';
 
+// レベルの表示順を定義
+export const LEVEL_ORDER = [
+    'SHOGUN',   // 将軍
+    'DAIMYO',   // 大名
+    'TAIRO',    // 大老
+    'ROJU',     // 老中
+    'BUGYO',    // 奉行
+    'DAIKANN',  // 代官
+    'BUSHO',    // 武将
+    'ASHIGARU'  // 足軽
+] as const;
+
+// レベル要件の定義
+export const LEVEL_REQUIREMENTS = {
+    'SHOGUN': {
+        maxLine: 600000,
+        otherLines: 500000
+    },
+    'DAIMYO': {
+        maxLine: 300000,
+        otherLines: 150000
+    },
+    'TAIRO': {
+        maxLine: 100000,
+        otherLines: 50000
+    },
+    'ROJU': {
+        maxLine: 50000,
+        otherLines: 25000
+    },
+    'BUGYO': {
+        maxLine: 10000,
+        otherLines: 5000
+    },
+    'DAIKANN': {
+        maxLine: 5000,
+        otherLines: 2500
+    },
+    'BUSHO': {
+        maxLine: 3000,
+        otherLines: 1500
+    },
+    'ASHIGARU': {
+        maxLine: 1000,
+        otherLines: 0
+    }
+} as const;
+
 // 天下統一ボーナスの分配率
-const CONQUEST_BONUS_RATES = {
+export const CONQUEST_BONUS_RATES = {
     'ASHIGARU': 45,  // 足軽: 45%
     'BUSHO': 25,     // 武将: 25%
     'DAIKANN': 10,   // 代官: 10%
@@ -13,105 +61,97 @@ const CONQUEST_BONUS_RATES = {
     'SHOGUN': 2      // 将軍: 2%
 } as const;
 
-export async function calculateWeeklyProfitPreview(
+// レベルの日本語表示を追加
+export const LEVEL_NAMES = {
+    'SHOGUN': '将軍',
+    'DAIMYO': '大名',
+    'TAIRO': '大老',
+    'ROJU': '老中',
+    'BUGYO': '奉行',
+    'DAIKANN': '代官',
+    'BUSHO': '武将',
+    'ASHIGARU': '足軽'
+} as const;
+
+export const calculateWeeklyProfitPreview = async (
     startDate: Date,
     endDate: Date,
     companyProfit: number,
     distributionRate: number
-): Promise<WeeklyProfitPreview> {
+): Promise<WeeklyProfitPreview> => {
     try {
-        console.log('プレビュー計算開始:', { companyProfit, distributionRate });
-
-        // レベルごとのユーザー数を取得
+        // ユーザーデータの取得
         const { data: users, error } = await supabase
             .from('profiles')
             .select(`
                 id,
                 display_id,
+                name,
+                max_line_investment,
+                other_lines_investment,
                 nft_purchase_requests (
                     id,
                     status,
                     nft_settings (
                         price
                     )
-                ),
-                investment_amount,
-                max_line_investment,
-                other_lines_investment
-            `);  // NONEの条件を削除
+                )
+            `)
 
-        if (error) {
-            console.error('ユーザー取得エラー:', error);
-            throw error;
-        }
+        if (error) throw error
 
-        console.log('取得したユーザー:', users);
+        // 総分配額の計算
+        const totalDistribution = companyProfit * (distributionRate / 100)
 
-        // レベルごとのユーザー情報を集計
-        const levelUsers = users.reduce((acc, user) => {
-            // NFTの確認
+        // レベルごとのユーザー集計
+        const levelUsers = {} as Record<string, Array<{ id: string, display_id: string, name: string }>>
+        
+        users?.forEach(user => {
             const hasRequiredNFT = user.nft_purchase_requests?.some(nft => 
                 nft.status === 'approved' && 
-                Number(nft.nft_settings.price) >= 1000
-            );
+                nft.nft_settings?.price >= 1000
+            )
 
-            // レベル判定
-            let level = 'NONE';
-            const maxLine = Number(user.max_line_investment) || 0;
-            const otherLines = Number(user.other_lines_investment) || 0;
+            if (hasRequiredNFT) {
+                const maxLine = Number(user.max_line_investment) || 0
+                const otherLines = Number(user.other_lines_investment) || 0
 
-            if (hasRequiredNFT && maxLine >= 1000) {
-                if (maxLine >= 600000 && otherLines >= 500000) level = 'SHOGUN';
-                else if (maxLine >= 300000 && otherLines >= 150000) level = 'DAIMYO';
-                else if (maxLine >= 100000 && otherLines >= 50000) level = 'TAIRO';
-                else if (maxLine >= 50000 && otherLines >= 25000) level = 'ROJU';
-                else if (maxLine >= 10000 && otherLines >= 5000) level = 'BUGYO';
-                else if (maxLine >= 5000 && otherLines >= 2500) level = 'DAIKANN';
-                else if (maxLine >= 3000 && otherLines >= 1500) level = 'BUSHO';
-                else level = 'ASHIGARU';
-            }
-
-            if (level !== 'NONE') {
-                if (!acc[level]) {
-                    acc[level] = [];
+                // 最上位のレベルから判定
+                let assigned = false
+                for (const [level, req] of Object.entries(LEVEL_REQUIREMENTS)) {
+                    if (!assigned && maxLine >= req.maxLine && otherLines >= req.otherLines) {
+                        if (!levelUsers[level]) {
+                            levelUsers[level] = []
+                        }
+                        levelUsers[level].push({
+                            id: user.id,
+                            display_id: user.display_id,
+                            name: user.name
+                        })
+                        assigned = true
+                    }
                 }
-                acc[level].push({
-                    id: user.id,
-                    display_id: user.display_id
-                });
             }
-            return acc;
-        }, {} as Record<string, Array<{ id: string, display_id: string }>>);
-
-        console.log('レベルごとのユーザー:', levelUsers);
-
-        // レベルごとのユーザー数を集計
-        const levelCounts = Object.entries(levelUsers).reduce((acc, [level, users]) => {
-            acc[level] = users.length;
-            return acc;
-        }, {} as Record<string, number>);
-
-        // 分配原資の計算
-        const totalBonus = companyProfit * (distributionRate / 100);
-
-        // レベルごとのポイント計算
-        const totalPoints = Object.entries(levelCounts).reduce((sum, [level, count]) => 
-            sum + (CONQUEST_BONUS_RATES[level] || 0) * count, 0);
+        })
 
         // レベルごとの分配額を計算
-        const byLevel = Object.entries(levelCounts)
-            .filter(([level]) => level in CONQUEST_BONUS_RATES)
-            .map(([level, userCount]) => {
-                const levelPoints = CONQUEST_BONUS_RATES[level] * userCount;
-                const amount = (totalBonus * levelPoints) / totalPoints;
-                return {
-                    level,
-                    userCount,
-                    amount,
-                    perUser: amount / userCount,
-                    users: levelUsers[level] || []
-                };
-            });
+        const distributions = LEVEL_ORDER.map(level => {
+            const users = levelUsers[level] || []
+            const rate = CONQUEST_BONUS_RATES[level]
+            const levelAmount = users.length > 0 ? totalDistribution * (rate / 100) : 0  // ユーザーがいない場合は0
+            const perUser = users.length > 0 ? levelAmount / users.length : 0
+
+            return {
+                level,
+                userCount: users.length,
+                amount: levelAmount,  // ユーザーがいるレベルの分のみ計算
+                perUser,
+                users
+            }
+        })
+
+        // 実際の総分配額を計算（ユーザーがいるレベルの合計）
+        const actualTotalDistribution = distributions.reduce((total, level) => total + level.amount, 0)
 
         return {
             weekStartDate: startDate,
@@ -119,19 +159,15 @@ export async function calculateWeeklyProfitPreview(
             companyProfit,
             distributionRate,
             distributions: {
-                dailyRewards: {
-                    total: 0,
-                    details: []
-                },
                 unificationBonus: {
-                    total: totalBonus,
-                    byLevel
+                    total: actualTotalDistribution,  // 実際の総分配額を使用
+                    byLevel: distributions
                 }
             },
-            totalDistribution: totalBonus
-        };
+            totalDistribution: actualTotalDistribution
+        }
     } catch (error) {
-        console.error('Error calculating preview:', error);
-        throw error;
+        console.error('Error calculating preview:', error)
+        throw error
     }
 } 

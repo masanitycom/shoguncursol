@@ -10,42 +10,12 @@ import { calculateWeeklyProfitPreview } from '@/lib/services/weekly-profit'
 import { WeeklyProfitPreview } from '@/types/reward'
 import { formatPrice } from '@/lib/utils'
 import { message } from 'antd'
-
-// 天下統一ボーナスの分配率
-const CONQUEST_BONUS_RATES = {
-    'ASHIGARU': 45,
-    'BUSHO': 25,
-    'DAIKANN': 10,
-    'BUGYO': 6,
-    'ROJU': 5,
-    'TAIRO': 4,
-    'DAIMYO': 3,
-    'SHOGUN': 2
-} as const;
-
-// レベルの表示順を定義
-const LEVEL_ORDER = [
-    'SHOGUN',   // 将軍
-    'DAIMYO',   // 大名
-    'TAIRO',    // 大老
-    'ROJU',     // 老中
-    'BUGYO',    // 奉行
-    'DAIKANN',  // 代官
-    'BUSHO',    // 武将
-    'ASHIGARU'  // 足軽
-] as const;
-
-// レベルの日本語表示
-const LEVEL_NAMES = {
-    'SHOGUN': '将軍',
-    'DAIMYO': '大名',
-    'TAIRO': '大老',
-    'ROJU': '老中',
-    'BUGYO': '奉行',
-    'DAIKANN': '代官',
-    'BUSHO': '武将',
-    'ASHIGARU': '足軽'
-} as const;
+import { 
+    LEVEL_ORDER, 
+    LEVEL_REQUIREMENTS, 
+    CONQUEST_BONUS_RATES,
+    LEVEL_NAMES
+} from '@/lib/services/weekly-profit'
 
 export default function WeeklyProfitRegister() {
     const router = useRouter()
@@ -101,13 +71,12 @@ export default function WeeklyProfitRegister() {
             const { error } = await supabase
                 .from('weekly_profits')
                 .insert({
-                    start_date: formData.startDate,
-                    end_date: formData.endDate,
-                    company_profit: formData.companyProfit,
-                    distribution_rate: formData.distributionRate,
-                    total_bonus: preview.distributions.unificationBonus.total,
-                    status: 'pending',
-                    distributions: preview.distributions.unificationBonus.byLevel
+                    week_start: formData.startDate,
+                    week_end: formData.endDate,
+                    total_profit: formData.companyProfit,
+                    share_rate: formData.distributionRate,
+                    distribution_amount: preview.distributions.unificationBonus.total,
+                    distributed: false
                 })
 
             if (error) throw error
@@ -196,13 +165,13 @@ export default function WeeklyProfitRegister() {
                             </div>
 
                             {preview && (
-                                <div className="mt-8 space-y-6 bg-white rounded-lg p-6">
+                                <div className="mt-6 space-y-4 bg-white rounded-lg p-4">
                                     {/* 分配原資の表示 */}
-                                    <div className="flex items-baseline justify-between border-b pb-4">
-                                        <div className="text-lg text-gray-600">分配原資</div>
-                                        <div className="text-2xl font-bold text-gray-900">
+                                    <div className="flex items-baseline justify-between border-b pb-3">
+                                        <div className="text-base text-gray-600">分配原資</div>
+                                        <div className="text-lg font-bold text-gray-900">
                                             ${formatPrice(preview.distributions.unificationBonus.total)}
-                                            <span className="text-base text-gray-500 ml-3">
+                                            <span className="text-sm text-gray-500 ml-2">
                                                 (${formatPrice(formData.companyProfit)} × {formData.distributionRate}%)
                                             </span>
                                         </div>
@@ -210,15 +179,14 @@ export default function WeeklyProfitRegister() {
 
                                     {/* レベル別分配テーブル */}
                                     <div className="overflow-x-auto">
-                                        <table className="w-full">
+                                        <table className="w-full text-sm">
                                             <thead>
                                                 <tr className="bg-gray-50 border-b">
-                                                    <th className="px-4 py-3 text-left text-gray-600">レベル</th>
-                                                    <th className="px-4 py-3 text-center text-gray-600">分配率</th>
-                                                    <th className="px-4 py-3 text-center text-gray-600">ユーザー数</th>
-                                                    <th className="px-4 py-3 text-right text-gray-600">総支給額</th>
-                                                    <th className="px-4 py-3 text-right text-gray-600">1人あたり</th>
-                                                    <th className="px-4 py-3 text-left text-gray-600">到達者</th>
+                                                    <th className="px-3 py-2 text-left text-gray-600">レベル</th>
+                                                    <th className="px-3 py-2 text-center text-gray-600">分配率</th>
+                                                    <th className="px-3 py-2 text-center text-gray-600">ユーザー数</th>
+                                                    <th className="px-3 py-2 text-right text-gray-600">1人あたり</th>
+                                                    <th className="px-3 py-2 text-right text-gray-600">総支給額</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -234,7 +202,7 @@ export default function WeeklyProfitRegister() {
                                                                 ${hasUsers ? 'bg-blue-50' : 'bg-white'}
                                                             `}
                                                         >
-                                                            <td className="px-4 py-3 text-gray-900">
+                                                            <td className="px-3 py-2 text-gray-900">
                                                                 <div className="flex items-center space-x-2">
                                                                     <span className={`
                                                                         w-2 h-2 rounded-full
@@ -243,62 +211,20 @@ export default function WeeklyProfitRegister() {
                                                                     <span>{LEVEL_NAMES[levelKey]}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-4 py-3 text-center">
+                                                            <td className="px-3 py-2 text-center">
                                                                 <span className="px-2 py-1 bg-gray-100 rounded text-sm text-gray-700">
                                                                     {CONQUEST_BONUS_RATES[levelKey]}%
                                                                 </span>
                                                             </td>
-                                                            <td className="px-4 py-3 text-center text-gray-900">
+                                                            <td className="px-3 py-2 text-center text-gray-900">
                                                                 {levelData?.userCount || 0}
                                                                 <span className="text-gray-500 ml-1">人</span>
                                                             </td>
-                                                            <td className="px-4 py-3 text-right text-gray-900">
-                                                                ${formatPrice(levelData?.amount || 0)}
-                                                            </td>
-                                                            <td className="px-4 py-3 text-right text-gray-900">
+                                                            <td className="px-3 py-2 text-right text-gray-900">
                                                                 ${formatPrice(levelData?.perUser || 0)}
                                                             </td>
-                                                            <td className="px-4 py-3">
-                                                                {levelData?.users && levelData.users.length > 0 && (
-                                                                    <div className="flex items-center">
-                                                                        {/* 最初の3人まで表示 */}
-                                                                        <div className="flex flex-wrap gap-1">
-                                                                            {levelData.users.slice(0, 3).map(u => (
-                                                                                <span key={u.id} 
-                                                                                    className="inline-block px-2 py-1 bg-gray-100 
-                                                                                             rounded text-sm text-gray-700">
-                                                                                    {u.display_id}
-                                                                                </span>
-                                                                            ))}
-                                                                        </div>
-                                                                        
-                                                                        {/* 4人以上いる場合は残りの人数を表示 */}
-                                                                        {levelData.users.length > 3 && (
-                                                                            <span className="ml-2 text-sm text-gray-500">
-                                                                                他 {levelData.users.length - 3}人
-                                                                            </span>
-                                                                        )}
-                                                                        
-                                                                        {/* ホバーで全員表示するツールチップ */}
-                                                                        {levelData.users.length > 3 && (
-                                                                            <div className="group relative">
-                                                                                <button className="ml-2 text-gray-400 hover:text-gray-600">
-                                                                                    <span className="text-xs">詳細</span>
-                                                                                </button>
-                                                                                <div className="absolute left-0 mt-2 w-64 bg-white p-2 rounded shadow-lg 
-                                                                                              hidden group-hover:block z-10">
-                                                                                    <div className="max-h-40 overflow-y-auto">
-                                                                                        {levelData.users.map(u => (
-                                                                                            <div key={u.id} className="text-sm py-1 text-gray-700">
-                                                                                                {u.display_id}
-                                                                                            </div>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
+                                                            <td className="px-3 py-2 text-right text-gray-900">
+                                                                ${formatPrice(levelData?.amount || 0)}
                                                             </td>
                                                         </tr>
                                                     );
@@ -306,11 +232,10 @@ export default function WeeklyProfitRegister() {
                                             </tbody>
                                             <tfoot>
                                                 <tr className="bg-gray-50 font-bold">
-                                                    <td colSpan={3} className="px-4 py-3 text-gray-900">合計</td>
-                                                    <td className="px-4 py-3 text-right text-gray-900">
+                                                    <td colSpan={4} className="px-3 py-2 text-gray-900">合計</td>
+                                                    <td className="px-3 py-2 text-right text-gray-900">
                                                         ${formatPrice(preview.distributions.unificationBonus.total)}
                                                     </td>
-                                                    <td colSpan={2}></td>
                                                 </tr>
                                             </tfoot>
                                         </table>

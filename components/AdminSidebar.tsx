@@ -18,54 +18,60 @@ import {
     ChatBubbleLeftIcon,
     ShoppingCartIcon,
     PlusCircleIcon,
-    TrophyIcon
+    TrophyIcon,
+    CalculatorIcon
 } from '@heroicons/react/24/outline'
 import { ListBulletIcon } from '@heroicons/react/24/outline'
 import { supabase } from '@/lib/supabase'
 
-const menuGroups = [
+const navigation = [
     {
-        title: 'メイン',
-        items: [
+        name: 'メイン',
+        children: [
             { name: 'ダッシュボード', href: '/admin/dashboard', icon: HomeIcon }
         ]
     },
     {
-        title: 'ユーザー管理',
-        items: [
+        name: 'ユーザー管理',
+        children: [
             { name: 'ユーザー管理', href: '/admin/users', icon: UsersIcon },
-            { name: '新規ユーザー登録', href: '/admin/users/new', icon: UserPlusIcon },
-            { name: '組織図', href: '/admin/organization', icon: DocumentChartBarIcon }
+            { name: '新規ユーザー登録', href: '/admin/users/register', icon: UserPlusIcon },
+            { name: '組織図', href: '/admin/organization', icon: UsersIcon }
         ]
     },
     {
-        title: '収益管理',
-        items: [
-            { name: '報酬計算', href: '/admin/rewards/calculate', icon: ChartBarIcon },
+        name: '収益管理',
+        children: [
+            { name: '報酬計算', href: '/admin/rewards/calculate', icon: CalculatorIcon },
             { name: '日利設定', href: '/admin/daily-rates', icon: ChartBarIcon },
-            { name: '報酬管理', href: '/admin/rewards/manage', icon: BanknotesIcon },
-            { name: '週次利益登録', href: '/admin/weekly-profits/register', icon: PlusCircleIcon },
-            { name: '週次利益管理', href: '/admin/weekly-profits/manage', icon: ListBulletIcon },
-            { name: '天下統一ボーナス', href: '/admin/conquest-bonus', icon: TrophyIcon }
+            { name: '報酬管理', href: '/admin/rewards/manage', icon: BanknotesIcon }
         ]
     },
     {
-        title: 'タスク',
-        items: [
+        name: '天下統一ボーナス',
+        children: [
+            { name: 'ボーナス計算', href: '/admin/weekly-profits/register', icon: CalculatorIcon },
+            { name: 'ボーナス管理', href: '/admin/weekly-profits/manage', icon: ListBulletIcon },
+            { name: '到達状況', href: '/admin/conquest-progress', icon: ChartBarIcon }
+        ]
+    },
+    {
+        name: 'タスク',
+        children: [
             { name: 'タスク管理', href: '/admin/tasks', icon: ClipboardDocumentListIcon },
             { name: '未回答タスク', href: '/admin/tasks/pending', icon: ClipboardDocumentListIcon }
         ]
     },
     {
-        title: 'NFT',
-        items: [
+        name: 'NFT',
+        children: [
             { name: 'NFT管理', href: '/admin/nfts', icon: PhotoIcon },
             { name: 'NFT設定', href: '/admin/nfts/settings', icon: WrenchScrewdriverIcon }
         ]
     },
     {
-        title: '設定',
-        items: [
+        name: '設定',
+        children: [
             { name: 'システム設定', href: '/admin/settings', icon: Cog6ToothIcon }
         ]
     }
@@ -73,7 +79,7 @@ const menuGroups = [
 
 export default function AdminSidebar() {
     const pathname = usePathname()
-    const [openGroups, setOpenGroups] = useState<string[]>(menuGroups.map(g => g.title))
+    const [openGroups, setOpenGroups] = useState<string[]>(navigation.map(g => g.name))
     const [purchaseRequestCount, setPurchaseRequestCount] = useState(0)
 
     const isActive = (path: string) => {
@@ -126,22 +132,22 @@ export default function AdminSidebar() {
             </div>
             <nav>
                 <ul className="space-y-4">
-                    {menuGroups.map((group) => (
-                        <li key={group.title} className="space-y-2">
+                    {navigation.map((group) => (
+                        <li key={group.name} className="space-y-2">
                             <div
                                 className="flex items-center justify-between px-4 py-2 text-gray-400 cursor-pointer hover:text-gray-300"
-                                onClick={() => toggleGroup(group.title)}
+                                onClick={() => toggleGroup(group.name)}
                             >
-                                <span className="text-sm font-semibold">{group.title}</span>
+                                <span className="text-sm font-semibold">{group.name}</span>
                                 <ChevronDownIcon
                                     className={`h-4 w-4 transition-transform duration-200 ${
-                                        openGroups.includes(group.title) ? 'transform rotate-180' : ''
+                                        openGroups.includes(group.name) ? 'transform rotate-180' : ''
                                     }`}
                                 />
                             </div>
-                            {openGroups.includes(group.title) && (
+                            {openGroups.includes(group.name) && (
                                 <ul className="space-y-1 ml-4">
-                                    {group.items.map((item) => (
+                                    {group.children.map((item) => (
                                         <li key={item.href}>
                                             <Link
                                                 href={item.href}
