@@ -35,7 +35,7 @@ const navigation = [
         name: 'ユーザー管理',
         children: [
             { name: 'ユーザー管理', href: '/admin/users', icon: UsersIcon },
-            { name: '新規ユーザー登録', href: '/admin/users/register', icon: UserPlusIcon },
+            { name: '新規ユーザー登録', href: '/admin/users/new', icon: UserPlusIcon },
             { name: '組織図', href: '/admin/organization', icon: UsersIcon }
         ]
     },

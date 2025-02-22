@@ -38,6 +38,7 @@ import { fetchPendingRewards } from '@/lib/services/reward'
 import { PendingRewards } from '@/types/reward'
 import { formatPrice } from '@/lib/utils'
 import { WeeklyProfit as ImportedWeeklyProfit } from '@/types/dailyProfit';
+import type { DashboardData } from '@/types/reward';
 
 const DEFAULT_NFT_IMAGE = 'https://placehold.co/400x300/1f2937/ffffff?text=NFT'; // プレースホルダー画像を使用
 
@@ -158,16 +159,16 @@ interface HTMLImageElementWithSrc extends HTMLImageElement {
     src: string;
 }
 
-// 型定義
-interface DashboardData {
+// 既存のDashboardData型を削除または名前を変更
+interface DashboardDataLocal {
     currentLevel: string;
     maxLineInvestment: number;
     otherLinesInvestment: number;
     personalInvestment: number;
     nft_purchase_requests: NFTPurchaseRequest[];
-    profile: UserProfile;  // any型を具体的な型に変更
-    nfts: NFTWithReward[];   // any[]型を具体的な型に変更
-    investmentInfo: InvestmentInfo;  // any型を具体的な型に変更
+    profile: UserProfile;
+    nfts: NFTWithReward[];
+    investmentInfo: InvestmentInfo;
 }
 
 // レベルの日本語表示とスタイルを定義
@@ -397,7 +398,7 @@ export default function DashboardPage() {
     });
     const [weeklyProfits, setWeeklyProfits] = useState<WeeklyProfit[]>([]);
     const [dailyProfits, setDailyProfits] = useState<DailyProfit[]>([]);
-    const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+    const [dashboardData, setDashboardData] = useState<DashboardDataLocal[]>([]);
     const [pendingRewards, setPendingRewards] = useState<PendingRewards>({
         daily: 0,
         conquest: 0,
@@ -763,7 +764,7 @@ export default function DashboardPage() {
 
             // 投資額を計算
             const totalInvestment = (dashboardData || []).reduce((sum, item) => 
-                sum + (Number(item.nft_settings?.price) || 0), 0);
+                sum + (item.nft_settings?.price || 0), 0);
 
             // レベル情報を返す
             return {
@@ -963,7 +964,7 @@ export default function DashboardPage() {
                 // 既存のfetchDashboardDataを使用
                 const data = profile?.id ? await fetchDashboardData(profile.id) : null;
                 if (data) {
-                    setDashboardData({
+                    setDashboardData([{
                         currentLevel: calculateUserLevel({
                             personalInvestment: data.investmentData.investment_amount,
                             maxLine: data.investmentData.max_line_investment,
@@ -976,7 +977,7 @@ export default function DashboardPage() {
                         profile: data.profile,
                         nfts: data.nfts,
                         investmentInfo: data.investmentData
-                    });
+                    }]);
                 }
             } catch (error) {
                 console.error('Error loading dashboard:', error);

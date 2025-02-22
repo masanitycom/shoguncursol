@@ -1,20 +1,16 @@
 export interface UserProfile {
     id: string;
-    user_id: string;
-    name: string;
-    name_kana?: string;
     email: string;
+    name: string;
+    name_kana: string;
+    display_id: string;
     wallet_address: string | null;
     wallet_type: string | null;
-    investment_amount: number;
-    total_team_investment: number;
-    max_line_investment: number;
-    other_lines_investment: number;
+    role: string;
     active: boolean;
+    status: string;
     created_at: string;
     updated_at: string;
-    display_id?: string;
-    children?: UserProfile[];
 }
 
 export interface UserUpdatePayload {
@@ -65,4 +61,16 @@ export interface LevelStats {
     totalInvestment?: number;
     referralCount?: number;
     currentLevel?: string;
+}
+
+export interface NewUserData {
+    email: string;
+    password: string;
+    name: string;
+    name_kana: string;
+    display_id: string;
+    phone: string;
+    referrer_id?: string;
+    wallet_address?: string;
+    wallet_type?: string;
 } 

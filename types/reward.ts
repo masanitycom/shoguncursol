@@ -147,6 +147,8 @@ export interface WeeklyProfitPreview {
 // NFT関連の型
 export interface NFTSettings {
     price: number;
+    daily_rate: number;
+    operation_start_date: string;
 }
 
 export interface NFTPurchaseRequest {
@@ -191,4 +193,21 @@ export interface PendingRewards {
     daily: number;
     conquest: number;
     total: number;
+}
+
+export interface DashboardData {
+    id: string;
+    nft_settings: NFTSettings;
+    investmentInfo: {
+        investment_amount: number;
+        max_line_investment: number;
+        other_lines_investment: number;
+    };
+    currentLevel: string;
+    profile: {
+        id: string;
+        display_id: string;
+        name: string;
+        email: string;
+    };
 } 

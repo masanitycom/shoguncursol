@@ -37,6 +37,22 @@ interface ValidationErrors {
     [key: string]: string;
 }
 
+// エラーメッセージの型を定義
+interface ErrorMessages {
+    [key: string]: string;
+}
+
+const ERROR_MESSAGES: ErrorMessages = {
+    'required_fields_missing': '名前とユーザーIDは必須です',
+    'display_id_exists': 'このユーザーIDは既に使用されています',
+    'referrer_not_found': '指定された紹介者IDは存在しません',
+    'weak_password': 'パスワードは8文字以上で、文字、数字、記号を含める必要があります',
+    'passwords_not_match': 'パスワードが一致しません',
+    'signup_failed': 'ユーザー登録に失敗しました',
+    'profile_creation_failed': 'プロフィールの作成に失敗しました',
+    'default': '登録中にエラーが発生しました。入力内容を確認して再度お試しください'
+};
+
 export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -73,15 +89,6 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         wallet_address: /^0x[a-fA-F0-9]{40}$/  // 0xで始まる16進数40文字
     }
 
-    // エラーメッセージの定義を更新
-    const VALIDATION_MESSAGES = {
-        name: 'カタカナと英数字のみで入力してください（スペース不可）',
-        display_id: 'ユーザーIDは半角英数字を混ぜて6文字以上で入力してください',
-        phone: '電話番号は10桁または11桁の数字で入力してください',
-        referrer_id: '紹介者IDは必須です。半角英数字で入力してください',
-        wallet_address: '有効なBEP20のUSDTアドレスを入力してください'
-    }
-
     // バリデーション状態の管理を修正
     const [validation, setValidation] = useState<ValidationState>({
         name: { isValid: true, message: '', touched: false },
@@ -103,24 +110,24 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
         switch (name) {
             case 'name':
                 isValid = VALIDATION_PATTERNS.name.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.name
+                message = isValid ? '' : 'カタカナと英数字のみで入力してください（スペース不可）'
                 break
             case 'display_id':
                 isValid = VALIDATION_PATTERNS.display_id.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.display_id
+                message = isValid ? '' : 'ユーザーIDは半角英数字を混ぜて6文字以上で入力してください'
                 break
             case 'phone':
                 isValid = VALIDATION_PATTERNS.phone.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.phone
+                message = isValid ? '' : '電話番号は10桁または11桁の数字で入力してください'
                 break
             case 'referrer_id':
                 isValid = VALIDATION_PATTERNS.referrer_id.test(value)
-                message = isValid ? '' : VALIDATION_MESSAGES.referrer_id
+                message = isValid ? '' : '紹介者IDは必須です。半角英数字で入力してください'
                 break
             case 'wallet_address':
                 if (value) {
                     isValid = VALIDATION_PATTERNS.wallet_address.test(value)
-                    message = isValid ? '' : VALIDATION_MESSAGES.wallet_address
+                    message = isValid ? '' : '有効なBEP20のUSDTアドレスを入力してください'
                 }
                 break
             case 'confirmPassword':
@@ -159,79 +166,50 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setLoading(true)
-        setError(null)
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
 
         try {
-            // 紹介者IDのバリデーション
-            if (formData.referrer_id) {
-                // display_idから実際のUUIDを取得
-                const { data: referrer, error: referrerError } = await supabase
-                    .from('profiles')
-                    .select('user_id')
-                    .eq('display_id', formData.referrer_id)
-                    .single()
+            // デバッグ用のログ追加
+            console.log('Sending data:', {
+                ...formData,
+                hasPassword: !!formData.password,
+                passwordLength: formData.password?.length
+            });
 
-                if (referrerError || !referrer) {
-                    throw new Error('指定された紹介者IDは存在しません')
-                }
+            const response = await fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: formData.email,
+                    password: formData.password,  // パスワードが正しく送信されているか確認
+                    name: formData.name,
+                    display_id: formData.display_id,
+                    phone: formData.phone,
+                    referrer_id: formData.referrer_id,
+                    wallet_address: formData.wallet_address,
+                    wallet_type: formData.wallet_type
+                })
+            });
 
-                // 実際のUUIDに置き換え
-                formData.referrer_id = referrer.user_id
+            const data = await response.json();
+            console.log('Response:', data);  // レスポンスの詳細を確認
+
+            if (!response.ok) {
+                throw new Error(data.error);
             }
 
-            if (formData.password !== formData.confirmPassword) {
-                setError('パスワードが一致しません')
-                return
-            }
+            router.push('/signup/complete');
 
-            const { data: authUser, error: authError } = await supabase.auth.signUp({
-                email: formData.email,
-                password: formData.password,
-                options: {
-                    data: {
-                        name: formData.name,
-                        name_kana: formData.name,
-                        display_id: formData.display_id,
-                        phone: formData.phone,
-                        referrer_id: formData.referrer_id,
-                        wallet_address: formData.wallet_address || null,
-                        wallet_type: formData.wallet_type || null
-                    }
-                }
-            })
-
-            if (authError) throw authError
-
-            if (!authUser.user?.id) {
-                setError('ユーザー登録に失敗しました')
-                return
-            }
-
-            // publicプロフィールの確認
-            const { data: publicUser } = await supabase
-                .from('users')
-                .select()
-                .eq('id', authUser.user.id)
-                .single()
-
-            if (!publicUser) {
-                // ユーザーIDが確実に存在する場合のみ削除を実行
-                await supabase.auth.admin.deleteUser(authUser.user.id)
-            } else {
-                setError('このメールアドレスは既に登録されています')
-                return
-            }
-
-            router.push('/signup/complete')
         } catch (error: any) {
-            console.error('Error during signup:', error)
-            setError('登録中にエラーが発生しました')
+            setError(error.message);
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     // フォームフィールドのスタイルを共通化
     const inputClassName = "mt-1 block w-full px-4 py-3 rounded-md border border-gray-600 bg-gray-700 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -262,8 +240,9 @@ export default function SignUpForm({ defaultReferrerId }: Props = {}) {
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="bg-gray-800 py-8 px-4 shadow sm:rounded-lg sm:px-10">
                     {error && (
-                        <div className="mb-4 p-4 bg-red-900/50 border border-red-500 rounded text-red-200">
-                            {error}
+                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                            <strong className="font-bold">エラー: </strong>
+                            <span className="block sm:inline">{error}</span>
                         </div>
                     )}
 

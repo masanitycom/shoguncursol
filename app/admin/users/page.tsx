@@ -213,30 +213,32 @@ export default function AdminUsersPage() {
         }
     }
 
-    const deleteUser = async (userId: string) => {
-        Modal.confirm({
-            title: '確認',
-            content: 'このユーザーを削除してもよろしいですか？',
-            okText: '削除',
-            cancelText: 'キャンセル',
-            onOk: async () => {
-                try {
-                    const { error } = await supabase
-                        .from('profiles')
-                        .delete()
-                        .eq('id', userId)
+    const handleDelete = async (userId: string) => {
+        try {
+            const response = await fetch('/api/admin/delete-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ userId }),
+            });
 
-                    if (error) throw error
+            const data = await response.json();
 
-                    antMessage.success('ユーザーを削除しました')
-                    fetchUsers() // リストを再取得
-                } catch (error) {
-                    console.error('Delete error:', error)
-                    antMessage.error('ユーザーの削除に失敗しました')
-                }
+            if (!response.ok) {
+                throw new Error(data.error || 'ユーザーの削除に失敗しました');
             }
-        })
-    }
+
+            // 成功時の処理（ユーザーリストの更新など）
+            antMessage.success('ユーザーを削除しました');
+            // リストを更新
+            fetchUsers();
+
+        } catch (error: any) {
+            console.error('Delete error:', error);
+            antMessage.error(error.message || 'ユーザーの削除に失敗しました');
+        }
+    };
 
     const copyToClipboard = async (text: string) => {
         try {
@@ -343,7 +345,7 @@ export default function AdminUsersPage() {
                                                             {user.active ? '無効化' : '有効化'}
                                                         </button>
                                                         <button
-                                                            onClick={() => deleteUser(user.id)}
+                                                            onClick={() => handleDelete(user.id)}
                                                             className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs whitespace-nowrap"
                                                         >
                                                             削除
@@ -439,5 +441,5 @@ export default function AdminUsersPage() {
                 </div>
             )}
         </div>
-    )
+    );
 } 
