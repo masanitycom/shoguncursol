@@ -104,4 +104,19 @@ export const calculateNFTSchedule = (purchaseDate: Date) => {
         rewardClaimStartDate,
         rewardClaimEndDate
     };
-}; 
+};
+
+// NFTWithReward型を追加
+export interface NFTWithReward {
+    id: string;
+    name: string;
+    price: number;
+    daily_rate: number;
+    image_url: string | null;
+    description: string | null;
+    purchase_date: string;
+    lastWeekReward?: number;
+    status: string;
+    approved_at: string | null;
+    reward_claimed?: boolean;
+} 

@@ -27,6 +27,86 @@ interface NFTWithReward {
     lastWeekReward: number;
 }
 
+// NFTの報酬を計算する関数
+export const calculateNFTReward = async (params: {
+    nftId: string;
+    price: number;
+    defaultDailyRate: number;
+    purchaseDate: string;
+    operationStartDate: Date;
+    targetStart: Date;
+    targetEnd: Date;
+}) => {
+    try {
+        const { nftId, price, defaultDailyRate, purchaseDate, operationStartDate, targetStart, targetEnd } = params;
+
+        console.log('Reward calculation parameters:', {
+            nftId,
+            price,
+            defaultDailyRate,
+            purchaseDate,
+            operationStartDate: operationStartDate.toISOString(),
+            targetStart: targetStart.toISOString(),
+            targetEnd: targetEnd.toISOString()
+        });
+
+        // 運用開始前の場合は0を返す
+        if (operationStartDate > targetEnd) {
+            return {
+                totalReward: 0,
+                dailyRewards: []
+            };
+        }
+
+        const { data: dailyRates, error } = await supabase
+            .from('daily_rates')
+            .select('date, rate')
+            .eq('nft_id', nftId)
+            .gte('date', targetStart.toISOString().split('T')[0])
+            .lte('date', targetEnd.toISOString().split('T')[0]);
+
+        if (error) {
+            console.error('Error fetching daily rates:', error);
+            throw error;
+        }
+
+        console.log('Found daily rates:', dailyRates);
+
+        let totalReward = 0;
+        const weekDays = dailyRates?.map(rate => new Date(rate.date)) || [];
+
+        weekDays.forEach(date => {
+            const dateStr = date.toISOString().split('T')[0];
+            const rateData = dailyRates?.find(rate => rate.date === dateStr);
+            const dailyRate = rateData ? Number(rateData.rate) : defaultDailyRate;
+            const reward = price * dailyRate;
+            totalReward += reward;
+
+            console.log('Daily calculation:', {
+                date: dateStr,
+                configuredRate: rateData?.rate,
+                usedRate: dailyRate,
+                reward: reward.toFixed(2)
+            });
+        });
+
+        console.log('Final calculation:', {
+            totalReward: totalReward.toFixed(2)
+        });
+
+        return {
+            totalReward,
+            dailyRewards: []
+        };
+    } catch (error) {
+        console.error('Error calculating NFT reward:', error);
+        return {
+            totalReward: 0,
+            dailyRewards: []
+        };
+    }
+};
+
 // 先週の日利報酬を計算する関数
 export const calculateLastWeekReward = async (nftId: string, price: number, defaultDailyRate: number, purchaseDate: string) => {
     try {

@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useAuth } from '@/lib/auth'
-import { calculateWeeklyProfitPreview } from '@/lib/services/weekly-profit'
+import { calculateWeeklyProfitPreview, registerWeeklyProfit } from '@/lib/services/weekly-profit'
 import { WeeklyProfitPreview } from '@/types/reward'
 import { formatPrice } from '@/lib/utils'
 import { message } from 'antd'
@@ -16,6 +16,13 @@ import {
     CONQUEST_BONUS_RATES,
     LEVEL_NAMES
 } from '@/lib/services/weekly-profit'
+
+interface LevelData {
+    level: string;
+    userCount: number;
+    amount: number;
+    perUser: number;
+}
 
 export default function WeeklyProfitRegister() {
     const router = useRouter()
@@ -68,21 +75,12 @@ export default function WeeklyProfitRegister() {
             if (!preview) return;
 
             setLoading(true)
-            const { error } = await supabase
-                .from('weekly_profits')
-                .insert({
-                    week_start: formData.startDate,
-                    week_end: formData.endDate,
-                    total_profit: formData.companyProfit,
-                    share_rate: formData.distributionRate,
-                    distribution_amount: preview.distributions.unificationBonus.total,
-                    distributed: false
-                })
+            const result = await registerWeeklyProfit(preview)
 
-            if (error) throw error
-
-            message.success('登録が完了しました')
-            router.push('/admin/weekly-profits/manage')
+            if (result.success) {
+                message.success('登録が完了しました')
+                router.push('/admin/weekly-profits/manage')
+            }
         } catch (error) {
             console.error('Error:', error)
             message.error('登録に失敗しました')
@@ -192,8 +190,8 @@ export default function WeeklyProfitRegister() {
                                             <tbody>
                                                 {LEVEL_ORDER.map((levelKey, index) => {
                                                     const levelData = preview.distributions.unificationBonus.byLevel
-                                                        .find(l => l.level === levelKey);
-                                                    const hasUsers = levelData?.userCount > 0;
+                                                        .find(l => l.level === levelKey) as LevelData | undefined;
+                                                    const hasUsers = (levelData?.userCount ?? 0) > 0;
                                                     
                                                     return (
                                                         <tr key={levelKey} 

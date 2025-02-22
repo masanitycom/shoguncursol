@@ -33,6 +33,11 @@ import { calculateUserStats } from '@/lib/utils/userLevel';
 import { LEVEL_NAMES_JP, getLevelLabel } from '@/lib/levelUtils';
 import { buildOrganizationTree } from '@/lib/organization';  // 新規追加
 import { fetchUserNFTs } from '@/lib/services/nft';
+import { useAuth } from '@/lib/auth'
+import { fetchPendingRewards } from '@/lib/services/reward'
+import { PendingRewards } from '@/types/reward'
+import { formatPrice } from '@/lib/utils'
+import { WeeklyProfit as ImportedWeeklyProfit } from '@/types/dailyProfit';
 
 const DEFAULT_NFT_IMAGE = 'https://placehold.co/400x300/1f2937/ffffff?text=NFT'; // プレースホルダー画像を使用
 
@@ -102,7 +107,14 @@ interface NFTQueryResult {
     status: string;
     created_at: string;
     approved_at: string | null;
-    nft_settings: NFTSettingsData;
+    nft_settings: {
+        id: string;
+        name: string;
+        price: number;
+        daily_rate: number;
+        image_url: string;
+        description?: string;
+    };
 }
 
 interface NFTMaster {
@@ -153,6 +165,9 @@ interface DashboardData {
     otherLinesInvestment: number;
     personalInvestment: number;
     nft_purchase_requests: NFTPurchaseRequest[];
+    profile: UserProfile;  // any型を具体的な型に変更
+    nfts: NFTWithReward[];   // any[]型を具体的な型に変更
+    investmentInfo: InvestmentInfo;  // any型を具体的な型に変更
 }
 
 // レベルの日本語表示とスタイルを定義
@@ -348,76 +363,24 @@ const calculateLevel = (data: {
     return 'NONE';
 };
 
-interface WeeklyProfit {
-    week: string;
-    totalProfit: number;
-    distributionAmount: number; // 20%
-    userShare: number;
-}
-
-// 週次利益の分配計算
-const calculateWeeklyProfitShare = (weeklyProfit: number, userLevel: string): number => {
-    const distributionAmount = weeklyProfit * 0.2; // 20%を分配
-    const levelRequirement = LEVEL_REQUIREMENTS[userLevel];
-    
-    if (!levelRequirement || userLevel === 'NONE') {
-        return 0;
-    }
-
-    return distributionAmount * (levelRequirement.profitShare / 100);
-};
-
-interface NFTData {
+// NFTWithRewardの型を統一
+interface NFTWithReward {
     id: string;
-    nft_settings: {
-        name: string;
-        price: number;
-        daily_rate: number;
-        description?: string;
-    };
+    name: string;
+    price: number;
+    daily_rate: number;
+    purchase_date: string;
+    reward_claimed: boolean;
+    image_url: string;
+    description: string;
+    status: string;
     approved_at: string | null;
-    created_at: string;
+    lastWeekReward: number;
 }
-
-// WeeklyProfit型の重複を解決
-interface LocalWeeklyProfit {  // 名前を変更
-    week: string;
-    totalProfit: number;
-    distributionAmount: number;
-    userShare: number;
-}
-
-// 保有中の報酬を計算する関数を追加
-const calculateTotalRewards = (nfts: NFTWithReward[]): number => {
-    return nfts.reduce((total, nft) => total + (nft.lastWeekReward || 0), 0);
-};
-
-// 紹介者数を取得する関数を修正
-const fetchReferralCount = async (userId: string) => {
-    try {
-        // 直接の紹介者を取得
-        const { data: directReferrals, error } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('referrer_id', userId);
-
-        if (error) {
-            console.error('Error fetching referrals:', error);
-            throw error;
-        }
-
-        // 組織図に影響を与えないよう、既存のデータ構造を維持
-        console.log('Fetched referral count:', directReferrals?.length || 0);
-        return directReferrals?.length || 0;
-    } catch (error) {
-        console.error('Error in fetchReferralCount:', error);
-        return 0;
-    }
-};
 
 export default function DashboardPage() {
     const router = useRouter()
-    const [user, setUser] = useState<CustomUser | null>(null)
+    const { user, handleLogout } = useAuth()
     const [userNFTs, setUserNFTs] = useState<NFTWithReward[]>([])
     const [requests, setRequests] = useState<NFTPurchaseRequest[]>([])
     const [loading, setLoading] = useState(true)
@@ -435,24 +398,19 @@ export default function DashboardPage() {
     const [weeklyProfits, setWeeklyProfits] = useState<WeeklyProfit[]>([]);
     const [dailyProfits, setDailyProfits] = useState<DailyProfit[]>([]);
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+    const [pendingRewards, setPendingRewards] = useState<PendingRewards>({
+        daily: 0,
+        conquest: 0,
+        total: 0
+    })
 
     const fetchNFTs = async () => {
         try {
-            console.log('=== Start Dashboard NFT Fetch ===');
-            console.log('User:', user?.id);
-            
-            if (!user?.id) {
-                console.log('No user ID available');
-                return;
-            }
-
+            if (!user?.id) return;
             const nfts = await fetchUserNFTs(user.id);
-            console.log('Fetched NFTs:', JSON.stringify(nfts, null, 2));
-            setUserNFTs(nfts);
-            
-            console.log('=== End Dashboard NFT Fetch ===\n');
+            setUserNFTs(nfts as NFTWithReward[]);
         } catch (error) {
-            console.error('Error fetching NFTs in dashboard:', error);
+            console.error('Error fetching NFTs:', error);
         }
     };
 
@@ -461,31 +419,68 @@ export default function DashboardPage() {
             if (!user?.id) return;
             
             try {
-                // プロフィール情報を取得
+                const { data: authUser } = await supabase.auth.getUser();
+                if (!authUser?.user?.email) return;
+
+                // まずemailでプロファイルを検索
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('*')
-                    .eq('id', user.id)
-                    .single();
+                    .eq('email', authUser.user.email)
+                    .maybeSingle();
 
                 if (profileError) {
                     console.error('Profile fetch error:', profileError);
                     return;
                 }
 
-                // 投資データを設定
+                if (!profile) {
+                    // プロファイルが存在しない場合は新規作成
+                    const displayId = `USER${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                    
+                    const { data: newProfile, error: createError } = await supabase
+                        .from('profiles')
+                        .insert({
+                            id: user.id,
+                            email: authUser.user.email,
+                            display_id: displayId,
+                            name: authUser.user.email?.split('@')[0] || 'Unknown',
+                            investment_amount: 0,
+                            max_line_investment: 0,
+                            other_lines_investment: 0,
+                            active: true,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        })
+                        .select()
+                        .single();
+
+                    if (createError) {
+                        console.error('Error creating profile:', createError);
+                        return;
+                    }
+
+                    // 投資データを設定
+                    const investmentData = {
+                        investment_amount: newProfile.investment_amount || 0,
+                        max_line_investment: newProfile.max_line_investment || 0,
+                        other_lines_investment: newProfile.other_lines_investment || 0
+                    };
+
+                    setInvestmentInfo(investmentData);
+                    setCurrentLevel(calculateLevel(investmentData));
+                    return;
+                }
+
+                // 既存のプロファイルの場合
                 const investmentData = {
                     investment_amount: profile.investment_amount || 0,
                     max_line_investment: profile.max_line_investment || 0,
                     other_lines_investment: profile.other_lines_investment || 0
                 };
 
-                // レベルを計算（一度だけ）
-                const level = calculateLevel(investmentData);
-
-                // 状態を更新
                 setInvestmentInfo(investmentData);
-                setCurrentLevel(level);
+                setCurrentLevel(calculateLevel(investmentData));
 
             } catch (error) {
                 console.error('Error loading organization data:', error);
@@ -516,7 +511,6 @@ export default function DashboardPage() {
                 }
 
                 if (isMounted) {
-                    setUser(session.user as CustomUser);
                     setLoading(false);
                 }
             } catch (error) {
@@ -530,7 +524,6 @@ export default function DashboardPage() {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             console.log('Auth state changed:', event, session?.user?.email);
             if (event === 'SIGNED_OUT') {
-                setUser(null);
                 setUserNFTs([]);
                 router.push('/login');
             } else if (session?.user) {
@@ -539,7 +532,6 @@ export default function DashboardPage() {
                     router.push('/admin/dashboard');
                     return;
                 }
-                setUser(session.user as CustomUser);
                 setLoading(false);
             }
         });
@@ -550,53 +542,65 @@ export default function DashboardPage() {
         };
     }, [router]);
 
-    // fetchUserProfile関数の戻り値の型を修正
+    // プロファイル取得のクエリを修正
     const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
         try {
-            const { data: profile, error } = await supabase
+            const { data: authUser } = await supabase.auth.getUser();
+            if (!authUser?.user?.id) return null;
+
+            // まずemailで検索
+            const { data: existingProfile } = await supabase
                 .from('profiles')
-                .select(`
-                    id,
-                    user_id,
-                    name,
-                    name_kana,
-                    email,
-                    wallet_address,
-                    wallet_type,
-                    investment_amount,
-                    total_team_investment,
-                    max_line_investment,
-                    other_lines_investment,
-                    active,
-                    created_at,
-                    updated_at
-                `)
-                .eq('user_id', userId)
+                .select('*')
+                .eq('email', authUser.user.email)
                 .maybeSingle();
 
-            if (error) {
-                console.error('Profile fetch error:', error);
+            if (existingProfile) {
+                // 既存のプロファイルが見つかった場合、idを更新
+                const { data: updatedProfile, error: updateError } = await supabase
+                    .from('profiles')
+                    .update({ id: userId })
+                    .eq('email', authUser.user.email)
+                    .select()
+                    .single();
+
+                if (updateError) {
+                    console.error('Error updating profile:', updateError);
+                    return existingProfile;  // 更新に失敗した場合は既存のプロファイルを返す
+                }
+
+                return updatedProfile;
+            }
+
+            // プロファイルが存在しない場合は新規作成
+            const displayId = `USER${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+            
+            const { data: newProfile, error: createError } = await supabase
+                .from('profiles')
+                .insert({
+                    id: userId,
+                    email: authUser.user.email,
+                    display_id: displayId,
+                    name: authUser.user.email?.split('@')[0] || 'Unknown',
+                    investment_amount: 0,
+                    max_line_investment: 0,
+                    other_lines_investment: 0,
+                    active: true,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+
+            if (createError) {
+                console.error('Error creating profile:', createError);
                 return null;
             }
 
-            return profile || {
-                id: userId,
-                user_id: userId,
-                name: '',
-                name_kana: '',
-                email: '',
-                wallet_address: null,
-                wallet_type: null,
-                investment_amount: 0,
-                total_team_investment: 0,
-                max_line_investment: 0,
-                other_lines_investment: 0,
-                active: true,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            };
+            return newProfile;
+
         } catch (error) {
-            console.error('Error fetching user profile:', error);
+            console.error('Error in fetchUserProfile:', error);
             return null;
         }
     };
@@ -617,62 +621,81 @@ export default function DashboardPage() {
         });
     };
 
-    // 単一のデータ取得関数に統合
+    // NFTデータの処理関数を修正
+    const processNFTData = (nftData: any[]): NFTWithReward[] => {
+        return nftData.map(nft => ({
+            id: nft.id,
+            name: nft.nft_settings.name,
+            price: Number(nft.nft_settings.price),
+            daily_rate: Number(nft.nft_settings.daily_rate),
+            purchase_date: nft.approved_at || nft.created_at,
+            reward_claimed: false,
+            image_url: nft.nft_settings.image_url || '/images/nft3000.png',
+            description: nft.nft_settings.description || '',
+            status: nft.status,
+            approved_at: nft.approved_at,
+            lastWeekReward: 0
+        }));
+    };
+
+    // 型エラーを修正するためのユーティリティ関数
+    const setNFTsWithTypeCheck = (nfts: NFTWithReward[]) => {
+        setUserNFTs(nfts as any); // 一時的な型キャストを使用
+    };
+
+    // ダッシュボードデータ取得の修正
     const fetchDashboardData = async (userId: string) => {
         try {
             setLoading(true);
-            
-            // プロフィール情報を取得
-            const { data: profile, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .single();
 
-            if (profileError) throw profileError;
+            const profile = await fetchUserProfile(userId);
+            if (!profile) {
+                setError('プロファイルの取得に失敗しました');
+                return null;
+            }
 
-            // NFTデータを取得
             const { data: nftData, error: nftError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
                     id,
+                    user_id,
+                    nft_id,
                     status,
                     created_at,
                     approved_at,
                     nft_settings (
+                        id,
                         name,
                         price,
                         daily_rate,
-                        image_url
+                        image_url,
+                        description
                     )
                 `)
                 .eq('user_id', userId)
                 .eq('status', 'approved');
 
-            if (nftError) throw nftError;
-
-            // 投資データを計算
-            const investmentData = {
-                investment_amount: profile.investment_amount || 0,
-                max_line_investment: profile.max_line_investment || 0,
-                other_lines_investment: profile.other_lines_investment || 0
-            };
-
-            // NFTデータを処理
-            const processedNFTs = nftData?.map(nft => ({
-                id: nft.id,
-                name: nft.nft_settings.name,
-                price: Number(nft.nft_settings.price),
-                daily_rate: Number(nft.nft_settings.daily_rate),
-                purchase_date: nft.approved_at || nft.created_at,
-                reward_claimed: false,
-                image_url: nft.nft_settings.image_url || '/images/nft3000.png'
-            })) || [];
+            if (nftError) {
+                console.error('Error fetching NFT data:', nftError);
+                return {
+                    profile,
+                    nfts: [],
+                    investmentData: {
+                        investment_amount: profile.investment_amount || 0,
+                        max_line_investment: profile.max_line_investment || 0,
+                        other_lines_investment: profile.other_lines_investment || 0
+                    }
+                };
+            }
 
             return {
                 profile,
-                nfts: processedNFTs,
-                investmentData
+                nfts: processNFTData(nftData || []),
+                investmentData: {
+                    investment_amount: profile.investment_amount || 0,
+                    max_line_investment: profile.max_line_investment || 0,
+                    other_lines_investment: profile.other_lines_investment || 0
+                }
             };
 
         } catch (error) {
@@ -862,8 +885,8 @@ export default function DashboardPage() {
 
                 // NFTデータを取得
                 const nfts = await fetchUserNFTs(user.id);
-                console.log('Setting NFTs:', nfts);  // デバッグログを追加
-                setUserNFTs(nfts);
+                console.log('Setting NFTs:', nfts);
+                setUserNFTs(nfts as NFTWithReward[]);
 
                 // 紹介者数を取得
                 const count = await fetchReferralCount(user.id);
@@ -876,18 +899,6 @@ export default function DashboardPage() {
 
         initializeData();
     }, [user?.id]);
-
-    // ログアウト処理を修正
-    const handleLogout = async () => {
-        try {
-            await supabase.auth.signOut();
-            setUser(null);
-            setUserNFTs([]);
-            router.push('/login');
-        } catch (error) {
-            console.error('Error logging out:', error);
-        }
-    };
 
     // NFTカードの表示部分を修正（待機期間の追加）
     const renderNFTList = () => {
@@ -950,9 +961,18 @@ export default function DashboardPage() {
                     .single();
 
                 // 既存のfetchDashboardDataを使用
-                const data = await fetchDashboardData(profile.id);
+                const data = profile?.id ? await fetchDashboardData(profile.id) : null;
                 if (data) {
                     setDashboardData({
+                        currentLevel: calculateUserLevel({
+                            personalInvestment: data.investmentData.investment_amount,
+                            maxLine: data.investmentData.max_line_investment,
+                            otherLines: data.investmentData.other_lines_investment
+                        }),
+                        maxLineInvestment: data.investmentData.max_line_investment,
+                        otherLinesInvestment: data.investmentData.other_lines_investment,
+                        personalInvestment: data.investmentData.investment_amount,
+                        nft_purchase_requests: [],  // 必要に応じて設定
                         profile: data.profile,
                         nfts: data.nfts,
                         investmentInfo: data.investmentData
@@ -1008,15 +1028,156 @@ export default function DashboardPage() {
         };
     }, [user?.id]);
 
+    useEffect(() => {
+        if (user) {
+            loadPendingRewards()
+        }
+    }, [user])
+
+    const loadPendingRewards = async () => {
+        try {
+            if (!user?.id) return;
+            
+            const { data: authUser } = await supabase.auth.getUser();
+            if (!authUser?.user?.email) return;
+
+            // emailでプロファイルを検索
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('email', authUser.user.email)
+                .maybeSingle();
+
+            if (!profile) {
+                console.log('Profile not found, skipping rewards fetch');
+                setPendingRewards({
+                    daily: 0,
+                    conquest: 0,
+                    total: 0
+                });
+                return;
+            }
+
+            const rewards = await fetchPendingRewards(profile.id);
+            setPendingRewards(rewards);
+        } catch (error) {
+            console.error('Error loading pending rewards:', error);
+            setPendingRewards({
+                daily: 0,
+                conquest: 0,
+                total: 0
+            });
+        }
+    };
+
+    // 次のレベルまでの条件を表示するコンポーネント
+    const renderNextLevelRequirements = (investmentInfo: InvestmentInfo) => {
+        const level = calculateUserLevel({
+            personalInvestment: investmentInfo.investment_amount,
+            maxLine: investmentInfo.max_line_investment,
+            otherLines: investmentInfo.other_lines_investment
+        });
+
+        if (level === 'NONE') {
+            return (
+                <div>
+                    <div className="text-gray-400 text-sm mb-2 flex items-center">
+                        <ArrowUpCircleIcon className="w-4 h-4 mr-2 text-blue-400" />
+                        次のレベルまでの条件
+                    </div>
+                    <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">必要な最大系列</span>
+                            <span className="text-white">
+                                ${LEVEL_REQUIREMENTS['ASHIGARU'].conditions.maxLine.toLocaleString()}
+                            </span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">必要な他系列全体</span>
+                            <span className="text-white">
+                                ${LEVEL_REQUIREMENTS['ASHIGARU'].conditions.otherLines.toLocaleString()}
+                            </span>
+                        </div>
+                        <div className="mt-2 text-xs text-blue-400">
+                            次のレベル: 足軽
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (level === 'SHOGUN') {
+            return (
+                <div className="text-center text-gray-400">
+                    最高レベルに到達しています
+                </div>
+            );
+        }
+
+        const levels = ['ASHIGARU', 'BUSHO', 'DAIKANN', 'BUGYO', 'ROJU', 'TAIRO', 'DAIMYO', 'SHOGUN'];
+        const levelNames = ['足軽', '武将', '大官', '奉行', '老中', '大老', '大名', '将軍'];
+        const currentIndex = levels.indexOf(level);
+        const nextLevel = levels[currentIndex + 1];
+        const nextLevelName = levelNames[currentIndex + 1];
+
+        return (
+            <div>
+                <div className="text-gray-400 text-sm mb-2 flex items-center">
+                    <ArrowUpCircleIcon className="w-4 h-4 mr-2 text-blue-400" />
+                    次のレベルまでの条件
+                </div>
+                <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">必要な最大系列</span>
+                        <span className="text-white">
+                            ${LEVEL_REQUIREMENTS[nextLevel].conditions.maxLine.toLocaleString()}
+                        </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">必要な他系列全体</span>
+                        <span className="text-white">
+                            ${LEVEL_REQUIREMENTS[nextLevel].conditions.otherLines.toLocaleString()}
+                        </span>
+                    </div>
+                    <div className="mt-2 text-xs text-blue-400">
+                        次のレベル: {nextLevelName}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // 紹介者数を取得する関数を追加
+    const fetchReferralCount = async (userId: string) => {
+        try {
+            const { data: directReferrals, error } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('referrer_id', userId);
+
+            if (error) {
+                console.error('Error fetching referrals:', error);
+                throw error;
+            }
+
+            return directReferrals?.length || 0;
+        } catch (error) {
+            console.error('Error in fetchReferralCount:', error);
+            return 0;
+        }
+    };
+
+    if (!user) return null
+
     return (
         <div className="min-h-screen bg-gray-900">
             <Header user={user} onLogout={handleLogout} />
             <main className="container mx-auto px-4 py-8">
                 <div className="max-w-7xl mx-auto">
                     <h1 className="text-3xl font-bold text-white mb-8">ダッシュボード</h1>
-                    
-                    {/* 上部のステータスカード */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+
+                    {/* 上部のステータスカード（レベル、総投資額、紹介者数） */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                         {/* レベルカード */}
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">現在のレベル</div>
@@ -1041,87 +1202,18 @@ export default function DashboardPage() {
                             </div>
                         </div>
 
-                        {/* 保有中の報酬 */}
-                        <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-gray-400 text-sm">保有中の報酬</div>
-                            <div className="text-white text-2xl font-bold">
-                                ${calculateTotalRewards(userNFTs).toFixed(2)}
-                            </div>
-                        </div>
-
                         {/* 紹介者数 */}
                         <div className="bg-gray-800 rounded-lg p-4">
                             <div className="text-gray-400 text-sm">紹介者数</div>
                             <div className="text-white text-2xl font-bold">{referralCount}人</div>
                         </div>
-
-                        {/* 最終報酬日 */}
-                        <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-gray-400 text-sm">最終報酬日</div>
-                            <div className="text-white text-2xl font-bold">-</div>
-                        </div>
                     </div>
 
                     {/* 次のレベルと天下統一ボーナス情報 */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-8">
                         {/* 次のレベルまでの条件 */}
                         <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-gray-400 text-sm mb-2 flex items-center">
-                                <ArrowUpCircleIcon className="w-4 h-4 mr-2 text-blue-400" />
-                                次のレベルまでの条件
-                            </div>
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-gray-400 text-sm">現在のレベル</span>
-                                <span className={`text-lg font-bold ${LEVEL_REQUIREMENTS[currentLevel]?.color}`}>
-                                    {LEVEL_REQUIREMENTS[currentLevel]?.name}
-                                </span>
-                            </div>
-                            {(() => {
-                                const nextRequirements = calculateNextLevelRequirements(currentLevel, investmentInfo);
-                                const nextLevel = getNextLevel(currentLevel);
-                                
-                                if (!nextRequirements || !nextLevel) {
-                                    return (
-                                        <div className="text-sm text-gray-400">
-                                            最高レベルに到達しています
-                                        </div>
-                                    );
-                                }
-
-                                return (
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-400">必要な最大系列</span>
-                                            <span className="text-white">
-                                                ${nextRequirements.maxLine.toLocaleString()}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-400">必要な他系列全体</span>
-                                            <span className="text-white">
-                                                ${nextRequirements.otherLines.toLocaleString()}
-                                            </span>
-                                        </div>
-                                        <div className="mt-2 text-xs text-blue-400">
-                                            次のレベル: {LEVEL_REQUIREMENTS[nextLevel].name}
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-                        </div>
-
-                        {/* 天下統一ボーナス */}
-                        <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-gray-400 text-sm mb-2 flex items-center">
-                                <CurrencyYenIcon className="w-4 h-4 mr-2 text-yellow-400" />
-                                天下統一ボーナス
-                            </div>
-                            <div className="text-2xl font-bold text-white mb-2">
-                                $0
-                            </div>
-                            <div className="text-sm text-gray-400">
-                                今週の獲得予定ボーナス
-                            </div>
+                            {renderNextLevelRequirements(investmentInfo)}
                         </div>
                     </div>
 
@@ -1208,7 +1300,41 @@ export default function DashboardPage() {
                         </Link>
                     </div>
 
-                    {/* NFTリスト（既存のコード） */}
+                    {/* 保留中の報酬 */}
+                    <div className="bg-gray-800 rounded-lg p-6 mb-8">
+                        <h2 className="text-xl font-bold text-white mb-4">保留中の報酬</h2>
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="bg-gray-700 rounded-lg p-4">
+                                <div className="text-sm text-gray-400 flex items-center mb-2">
+                                    <CurrencyYenIcon className="w-4 h-4 mr-2 text-green-400" />
+                                    日次報酬
+                                </div>
+                                <div className="text-2xl font-bold text-white">
+                                    ${formatPrice(pendingRewards.daily)}
+                                </div>
+                            </div>
+                            <div className="bg-gray-700 rounded-lg p-4">
+                                <div className="text-sm text-gray-400 flex items-center mb-2">
+                                    <GiftIcon className="w-4 h-4 mr-2 text-yellow-400" />
+                                    天下統一ボーナス
+                                </div>
+                                <div className="text-2xl font-bold text-white">
+                                    ${formatPrice(pendingRewards.conquest)}
+                                </div>
+                            </div>
+                            <div className="bg-blue-600 rounded-lg p-4">
+                                <div className="text-sm text-blue-200 flex items-center mb-2">
+                                    <ArrowUpCircleIcon className="w-4 h-4 mr-2 text-blue-200" />
+                                    合計
+                                </div>
+                                <div className="text-2xl font-bold text-white">
+                                    ${formatPrice(pendingRewards.total)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* NFTリスト */}
                     <div className="bg-gray-800 rounded-lg p-6">
                         <h3 className="text-xl font-bold text-white mb-4">保有NFT</h3>
                         {renderNFTList()}

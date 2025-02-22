@@ -144,13 +144,51 @@ export interface WeeklyProfitPreview {
     totalDistribution: number;
 }
 
-interface WeeklyProfit {
+// NFT関連の型
+export interface NFTSettings {
+    price: number;
+}
+
+export interface NFTPurchaseRequest {
+    id: string;
+    status: string;
+    nft_settings: NFTSettings;
+}
+
+// 天下統一ボーナス関連の型
+export interface WeeklyProfit {
     id: string;
     week_start: Date;
     week_end: Date;
     total_profit: number;
     share_rate: number;
     distribution_amount: number;
-    distributed: boolean;
-    created_at: string;
+    payment_date: Date;
+    distributions: {
+        [level: string]: {
+            userCount: number;
+            amount: number;
+            perUser: number;
+            users: string[];  // ユーザーID配列
+        };
+    };
+    created_at: Date;
+}
+
+// ユーザーの報酬関連の型
+export interface UserReward {
+    id: string;
+    user_id: string;
+    amount: number;
+    type: 'daily' | 'conquest' | 'airdrop';
+    status: 'pending' | 'requested' | 'paid';
+    created_at: Date;
+    paid_at?: Date;
+}
+
+// 保留中の報酬の集計用
+export interface PendingRewards {
+    daily: number;
+    conquest: number;
+    total: number;
 } 

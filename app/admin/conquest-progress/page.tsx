@@ -10,17 +10,27 @@ import { formatPrice } from '@/lib/utils'
 import { 
     LEVEL_ORDER, 
     LEVEL_REQUIREMENTS, 
-    CONQUEST_BONUS_RATES 
+    CONQUEST_BONUS_RATES,
+    LEVEL_NAMES 
 } from '@/lib/services/weekly-profit'
 
-interface NFTSettings {
+interface NFTSettingsResponse {
     price: number;
 }
 
-interface NFTPurchaseRequest {
+interface NFTPurchaseRequestResponse {
     id: string;
     status: string;
-    nft_settings: NFTSettings;
+    nft_settings: NFTSettingsResponse;
+}
+
+interface UserResponse {
+    id: string;
+    display_id: string;
+    name: string;
+    max_line_investment: number;
+    other_lines_investment: number;
+    nft_purchase_requests: NFTPurchaseRequestResponse[];
 }
 
 interface User {
@@ -29,7 +39,7 @@ interface User {
     name: string;
     max_line_investment: number;
     other_lines_investment: number;
-    nft_purchase_requests: NFTPurchaseRequest[];
+    nft_purchase_requests: NFTPurchaseRequestResponse[];
 }
 
 interface LevelData {
@@ -57,7 +67,7 @@ export default function ConquestProgress() {
             setLoading(true);
             const { data: users, error } = await supabase
                 .from('profiles')
-                .select(`
+                .select<string, UserResponse>(`
                     id,
                     display_id,
                     name,
@@ -80,7 +90,7 @@ export default function ConquestProgress() {
             users?.forEach(user => {
                 const hasRequiredNFT = user.nft_purchase_requests?.some(nft => 
                     nft.status === 'approved' && 
-                    nft.nft_settings?.price >= 1000
+                    nft.nft_settings.price >= 1000
                 );
 
                 if (hasRequiredNFT) {
@@ -109,12 +119,13 @@ export default function ConquestProgress() {
                 }
             });
 
+            // データの型を明示的に指定
             const data = Object.entries(LEVEL_REQUIREMENTS).map(([level, req]) => ({
                 level,
-                name: LEVEL_NAMES[level],  // 日本語名の取得
+                name: LEVEL_NAMES[level as keyof typeof LEVEL_NAMES],
                 maxLine: req.maxLine,
                 otherLines: req.otherLines,
-                bonus: CONQUEST_BONUS_RATES[level],  // ボーナス率の取得
+                bonus: CONQUEST_BONUS_RATES[level as keyof typeof CONQUEST_BONUS_RATES],
                 description: `最大系列$${formatPrice(req.maxLine)}以上、他系列$${formatPrice(req.otherLines)}以上`,
                 users: levelCounts[level] || []
             }));

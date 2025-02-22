@@ -170,4 +170,35 @@ export const calculateWeeklyProfitPreview = async (
         console.error('Error calculating preview:', error)
         throw error
     }
-} 
+}
+
+const getNextMondayDate = (date: Date): Date => {
+    const nextMonday = new Date(date);
+    nextMonday.setDate(nextMonday.getDate() + (7 - nextMonday.getDay()) + 1);
+    nextMonday.setHours(0, 0, 0, 0);
+    return nextMonday;
+};
+
+export const registerWeeklyProfit = async (data: WeeklyProfitPreview) => {
+    try {
+        const paymentDate = getNextMondayDate(new Date(data.weekEndDate));
+        
+        const { error } = await supabase
+            .from('weekly_profits')
+            .insert({
+                week_start: data.weekStartDate,
+                week_end: data.weekEndDate,
+                total_profit: data.companyProfit,
+                share_rate: data.distributionRate,
+                distribution_amount: data.distributions.unificationBonus.total,
+                payment_date: paymentDate,
+                distributions: data.distributions.unificationBonus.byLevel
+            });
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error) {
+        console.error('Error registering weekly profit:', error);
+        throw error;
+    }
+}; 

@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth'
 
 interface UserProfile {
     id: string
+    display_id: string
     email: string
     name: string | null
     wallet_type: string | null
@@ -98,10 +99,23 @@ export default function ProfilePage() {
 
             const userData: UserProfile = {
                 id: session.user.id,
+                display_id: profile?.display_id || 'USER' + Math.random().toString(36).substr(2, 9).toUpperCase(),
                 email: session.user.email || '',
                 name: profile?.name || null,
                 wallet_type: profile?.wallet_type || null,
                 wallet_address: profile?.wallet_address || null
+            }
+
+            // display_idが存在しない場合は作成
+            if (!profile?.display_id) {
+                const { error: updateError } = await supabase
+                    .from('profiles')
+                    .update({ display_id: userData.display_id })
+                    .eq('id', session.user.id)
+
+                if (updateError) {
+                    console.error('Error updating display_id:', updateError)
+                }
             }
 
             setProfile(userData)
@@ -217,8 +231,8 @@ export default function ProfilePage() {
         }
     }
 
-    const generateReferralUrl = useCallback((userId: string) => {
-        return `https://shogun-trade.com/signup?ref=${userId}`
+    const generateReferralUrl = useCallback((displayId: string) => {
+        return `https://shogun-trade.com/signup?ref=${displayId}`
     }, [])
 
     // LINEでシェア
@@ -226,7 +240,7 @@ export default function ProfilePage() {
         if (typeof window === 'undefined') return;
 
         const url = `https://line.me/R/msg/text/?${encodeURIComponent(
-            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(profile?.id || '')}`
+            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(profile?.display_id || '')}`
         )}`;
         window.open(url, '_blank');
     };
@@ -235,7 +249,7 @@ export default function ProfilePage() {
         if (typeof window === 'undefined') return;
 
         const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(profile?.id || '')}`
+            `ShogunTradeSystemに参加しませんか？\n登録はこちら：${generateReferralUrl(profile?.display_id || '')}`
         )}`;
 
         window.open(url, '_blank');
@@ -245,7 +259,7 @@ export default function ProfilePage() {
         if (typeof window === 'undefined') return;
         
         try {
-            await navigator.clipboard.writeText(profile?.id || '');
+            await navigator.clipboard.writeText(profile?.display_id || '');
             setSuccess('IDをコピーしました');
         } catch (error) {
             setError('IDのコピーに失敗しました');
@@ -298,7 +312,7 @@ export default function ProfilePage() {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <p className="text-gray-400">ID</p>
-                                                <p className="text-white font-medium">{profile?.id}</p>
+                                                <p className="text-white font-medium">{profile?.display_id}</p>
                                             </div>
                                             <div>
                                                 <p className="text-gray-400">名前</p>
@@ -451,7 +465,7 @@ export default function ProfilePage() {
                                         <p className="text-gray-400 mb-2">あなたのID</p>
                                         <div className="flex items-center space-x-4">
                                             <p className="text-xl font-mono text-white bg-gray-800 px-4 py-2 rounded">
-                                                {profile?.id}
+                                                {profile?.display_id}
                                             </p>
                                             <button
                                                 onClick={handleCopyId}
@@ -468,14 +482,14 @@ export default function ProfilePage() {
                                         <div className="flex items-center gap-4">
                                             <input
                                                 type="text"
-                                                value={generateReferralUrl(profile.id)}
+                                                value={generateReferralUrl(profile.display_id)}
                                                 readOnly
                                                 className="flex-1 bg-gray-700 text-white px-4 py-2 rounded"
                                             />
                                             <button
                                                 onClick={() => {
                                                     if (profile) {
-                                                        navigator.clipboard.writeText(generateReferralUrl(profile.id))
+                                                        navigator.clipboard.writeText(generateReferralUrl(profile.display_id))
                                                     }
                                                 }}
                                                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -494,7 +508,7 @@ export default function ProfilePage() {
                                                 onClick={() => setIsQRModalOpen(true)}
                                             >
                                                 <QRCodeSVG 
-                                                    value={generateReferralUrl(profile.id)}
+                                                    value={generateReferralUrl(profile.display_id)}
                                                     size={200}
                                                     level="H"
                                                     includeMargin
@@ -539,7 +553,7 @@ export default function ProfilePage() {
                     <div className="fixed inset-0 flex items-center justify-center p-4">
                         <Dialog.Panel className="bg-white rounded-lg p-8">
                             <QRCodeSVG 
-                                value={generateReferralUrl(profile.id)}
+                                value={generateReferralUrl(profile.display_id)}
                                 size={300}
                                 level="H"
                                 includeMargin
