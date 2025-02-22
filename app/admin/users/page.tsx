@@ -27,6 +27,8 @@ interface UserProfile {
     total_team_investment: number
     active: boolean
     created_at: string
+    wallet_address: string | null
+    wallet_type: string | null
 }
 
 interface User {
@@ -76,7 +78,7 @@ export default function AdminUsersPage() {
     const { handleLogout } = useAuth()
     const [users, setUsers] = useState<UserProfile[]>([])
     const [loading, setLoading] = useState(true)
-    const [selectedUser, setSelectedUser] = useState<User | null>(null)
+    const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null)
     const [editForm, setEditForm] = useState<EditForm>({
         name: '',
         email: '',
@@ -119,7 +121,7 @@ export default function AdminUsersPage() {
         try {
             console.log('Fetching users data...')
             
-            // profilesテーブルから直接データを取得
+            // profilesテーブルから必要なデータを全て取得
             const { data, error } = await supabase
                 .from('profiles')
                 .select(`
@@ -131,7 +133,9 @@ export default function AdminUsersPage() {
                     active,
                     created_at,
                     investment_amount,
-                    total_team_investment
+                    total_team_investment,
+                    wallet_address,
+                    wallet_type
                 `)
                 .order('created_at', { ascending: false })
 
@@ -149,14 +153,14 @@ export default function AdminUsersPage() {
         }
     }
 
-    const handleEdit = (user: User) => {
+    const handleEdit = (user: UserProfile) => {
         console.log('Editing user:', user);
         setSelectedUser(user);
         setEditForm({
-            name: user.name || user.name_kana || '',
+            name: user.name || '',
             email: user.email || '',
             wallet_address: user.wallet_address || '',
-            wallet_type: convertToWalletType(user.wallet_type)  // 型変換関数を使用
+            wallet_type: convertToWalletType(user.wallet_type)
         });
         setIsEditModalOpen(true);
     };
@@ -169,22 +173,25 @@ export default function AdminUsersPage() {
         setSuccess(null);
 
         try {
-            const updateData: UserUpdatePayload = {
+            const updateData = {
                 name: editForm.name,
-                name_kana: selectedUser.name_kana,
                 email: editForm.email,
                 wallet_address: editForm.wallet_address,
-                wallet_type: editForm.wallet_type || undefined
+                wallet_type: editForm.wallet_type || null
             };
 
-            const result = await syncUserData(selectedUser.id, updateData);
-            console.log('Update result:', result);
+            // profilesテーブルを直接更新
+            const { error } = await supabase
+                .from('profiles')
+                .update(updateData)
+                .eq('id', selectedUser.id);
 
-            if (result.success) {
-                setSuccess('ユーザー情報を更新しました');
-                await fetchUsers();
-                setIsEditModalOpen(false);
-            }
+            if (error) throw error;
+
+            setSuccess('ユーザー情報を更新しました');
+            await fetchUsers();
+            setIsEditModalOpen(false);
+
         } catch (error: any) {
             console.error('Update error:', error);
             setError('ユーザー情報の更新に失敗しました: ' + error.message);
@@ -324,7 +331,7 @@ export default function AdminUsersPage() {
                                                 <td className="p-4">
                                                     <div className="flex items-center space-x-1">
                                                         <button
-                                                            onClick={() => handleEdit(user as User)}
+                                                            onClick={() => handleEdit(user)}
                                                             className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs whitespace-nowrap"
                                                         >
                                                             編集
