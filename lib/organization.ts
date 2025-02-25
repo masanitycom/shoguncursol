@@ -1,73 +1,98 @@
 import { supabase } from './supabase';
 import { OrganizationMember } from '@/types/organization';
 
-export const buildOrganizationTree = async (userId: string): Promise<OrganizationMember> => {
+export const buildOrganizationTree = async (userId: string) => {
     try {
-        // プロフィールを取得
-        const { data: profile, error: profileError } = await supabase
+        // プロフィールとNFT購入データを一括取得
+        const { data: profiles, error: profileError } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-
-        if (profileError) throw profileError;
-
-        // NFTデータを取得
-        const { data: nftData, error: nftError } = await supabase
-            .from('nft_purchase_requests')
             .select(`
                 id,
-                status,
-                nft_settings!inner (
+                display_id,
+                name,
+                email,
+                investment_amount,
+                total_team_investment,
+                max_line_investment,
+                other_lines_investment,
+                referrer_id,
+                nft_purchase_requests (
                     id,
-                    name,
-                    price
+                    status,
+                    nft_master (
+                        price
+                    )
                 )
-            `)
-            .eq('user_id', profile.id)
-            .eq('status', 'approved');
+            `);
 
-        if (nftError) throw nftError;
-
-        // 子ノードを取得
-        const { data: children, error: childrenError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('referrer_id', userId);
-
-        if (childrenError) throw childrenError;
-
-        // 子ノードを再帰的に処理
-        const childNodes = await Promise.all(
-            (children || []).map(child => buildOrganizationTree(child.id))
-        );
-
-        // 最大系列と他系列の投資額を計算
-        let maxLineInvestment = 0;
-        let otherLinesInvestment = 0;
-
-        if (childNodes.length > 0) {
-            const lineInvestments = childNodes.map(child => child.total_team_investment);
-            maxLineInvestment = Math.max(...lineInvestments);
-            otherLinesInvestment = lineInvestments.reduce((sum, inv) => 
-                sum + (inv === maxLineInvestment ? 0 : inv), 0);
+        if (profileError) {
+            console.error('データ取得エラー:', profileError);
+            throw new Error('プロフィールの取得に失敗しました');
         }
 
-        // 全体の投資額を計算
-        const totalTeamInvestment = profile.investment_amount + 
-            childNodes.reduce((sum, child) => sum + child.total_team_investment, 0);
+        const buildTree = async (currentUserId: string): Promise<OrganizationMember> => {
+            const profile = profiles.find(p => p.id === currentUserId);
+            if (!profile) throw new Error(`プロフィールが見つかりません: ${currentUserId}`);
 
-        return {
-            ...profile,
-            nft_purchase_requests: nftData,
-            investment_amount: profile.investment_amount,
-            max_line_investment: maxLineInvestment,
-            other_lines_investment: otherLinesInvestment,
-            total_team_investment: totalTeamInvestment,
-            children: childNodes
+            // 自身のNFT投資額を計算
+            const selfInvestment = profile.investment_amount || 0;
+
+            // 子ノードを取得
+            const children = profiles.filter(p => p.referrer_id === currentUserId);
+            const childNodes = await Promise.all(
+                children.map(child => buildTree(child.id))
+            );
+
+            // 傘下全体の投資額を計算
+            const totalInvestment = selfInvestment + 
+                childNodes.reduce((sum, child) => sum + child.total_investment, 0);
+
+            // 最大系列と他系列の投資額を計算
+            const lineInvestments = childNodes.map(child => child.total_investment);
+            const maxLineInvestment = lineInvestments.length > 0 ? Math.max(...lineInvestments) : 0;
+            const otherLinesInvestment = lineInvestments
+                .filter(inv => inv !== maxLineInvestment)
+                .reduce((sum, inv) => sum + inv, 0);
+
+            return {
+                id: profile.id,
+                display_id: profile.display_id,
+                name: profile.name,
+                email: profile.email,
+                investment_amount: selfInvestment,
+                max_line_investment: maxLineInvestment,
+                other_lines_investment: otherLinesInvestment,
+                total_investment: totalInvestment,
+                nft_purchase_requests: profile.nft_purchase_requests || [],
+                children: childNodes
+            };
         };
+
+        return await buildTree(userId);
+
     } catch (error) {
-        console.error('Error building organization tree:', error);
+        console.error('組織ツリー構築エラー:', error);
         throw error;
     }
+};
+
+// 投資額計算関数を修正
+const calculateInvestments = (member: OrganizationMember) => {
+    let maxLineInvestment = 0;
+    let otherLinesInvestment = 0;
+
+    if (member.children.length > 0) {
+        // 各ラインの投資額を計算（傘下全体を含む）
+        const lineInvestments = member.children.map(child => child.total_investment);
+        
+        // 最大系列を特定
+        maxLineInvestment = Math.max(...lineInvestments);
+        
+        // 他系列の合計を計算
+        otherLinesInvestment = lineInvestments
+            .filter(inv => inv !== maxLineInvestment)
+            .reduce((sum, inv) => sum + inv, 0);
+    }
+
+    return { maxLineInvestment, otherLinesInvestment };
 }; 

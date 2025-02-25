@@ -14,14 +14,14 @@ export interface NFTPurchaseRequest {
 export interface OrganizationMember {
     id: string;
     display_id: string;
-    name: string | null;
+    name: string;
     email: string;
-    referrer_id: string | null;
+    level?: string;
     investment_amount: number;
     max_line_investment: number;
     other_lines_investment: number;
     total_team_investment: number;
-    created_at: string;
+    referrer_id: string | null;
+    nft_purchase_requests: any[];
     children: OrganizationMember[];
-    nft_purchase_requests: NFTPurchaseRequest[];
 } 

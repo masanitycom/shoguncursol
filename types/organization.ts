@@ -51,16 +51,25 @@ export interface OrganizationNode extends BaseNode {
 export interface OrganizationMember {
     id: string;
     display_id: string;
-    name: string;
-    email?: string;
-    display_name?: string;
+    name: string | null;
+    email: string;
+    referrer_id: string | null;
     investment_amount: number;
     max_line_investment: number;
     other_lines_investment: number;
     total_team_investment: number;
-    referrer_id: string | null;
+    created_at: string;
     children: OrganizationMember[];
-    nft_purchase_requests?: NFTPurchaseRequest[];
+    nft_purchase_requests: {
+        id: string;
+        status: string;
+        nft_master: {
+            id: string;
+            name: string;
+            price: number;
+            daily_rate: number;
+        };
+    }[];
 }
 
 // ユーザービュー用のデータ構造

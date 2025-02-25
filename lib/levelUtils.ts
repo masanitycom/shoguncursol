@@ -1,64 +1,136 @@
-// レベル判定に関する共通ロジックをここに移動
-export const LEVEL_NAMES_JP = {
-    'none': '--',
-    'ashigaru': '足軽',
-    'busho': '武将',
-    // ... 他のレベル
-};
+import { OrganizationMember } from '@/types/organization'
+import { LEVEL_NAMES_JP } from '@/lib/constants/levels'
 
+// レベル要件の定義
 export const LEVEL_REQUIREMENTS = {
     NONE: {
-        requiredNFT: 'NONE',
-        totalInvestment: 0
+        nftRequired: false,
+        maxLine: 0,
+        otherLines: 0,
+        shareRate: 0
     },
     ASHIGARU: {
-        requiredNFT: 'SHOGUN NFT1000',
-        totalInvestment: 1000,
-        profitShare: 45
+        nftRequired: false,
+        maxLine: 1000,
+        otherLines: 500,
+        shareRate: 45
     },
-    // ... 他のレベル
+    BUSHO: {
+        nftRequired: false,
+        maxLine: 3000,
+        otherLines: 1500,
+        shareRate: 25
+    },
+    DAIKANN: {
+        nftRequired: false,
+        maxLine: 5000,
+        otherLines: 2500,
+        shareRate: 10
+    },
+    BUGYO: {
+        nftRequired: false,
+        maxLine: 10000,
+        otherLines: 5000,
+        shareRate: 6
+    },
+    ROJU: {
+        nftRequired: false,
+        maxLine: 50000,
+        otherLines: 25000,
+        shareRate: 5
+    },
+    TAIRO: {
+        nftRequired: false,
+        maxLine: 100000,
+        otherLines: 50000,
+        shareRate: 4
+    },
+    DAIMYO: {
+        nftRequired: false,
+        maxLine: 300000,
+        otherLines: 150000,
+        shareRate: 3
+    },
+    SHOGUN: {
+        nftRequired: false,
+        maxLine: 600000,
+        otherLines: 500000,
+        shareRate: 2
+    }
 };
 
-export const calculateUserLevel = (member: OrganizationMember): string => {
-    // NFT要件チェック（1000以上のNFTを所持）
-    const hasRequiredNFT = member.nft_purchase_requests?.some(nft =>
-        Number(nft.nft_settings.price) >= 1000 && 
-        nft.status === 'approved'
-    );
+export function calculateLevel(member: OrganizationMember): string {
+    console.log('レベル判定開始:', {
+        user: member.display_id,
+        nfts: member.nft_purchase_requests,
+        maxLine: member.max_line_investment,
+        otherLines: member.other_lines_investment
+    });
 
-    if (!hasRequiredNFT) {
-        console.log('Level check:', {
-            user: member.display_id,
-            result: 'none',
-            reason: 'No required NFT'
+    // NFTデータの詳細をログ出力
+    if (member.nft_purchase_requests && member.nft_purchase_requests.length > 0) {
+        member.nft_purchase_requests.forEach(nft => {
+            console.log('NFT詳細:', {
+                id: nft.id,
+                status: nft.status,
+                nft_master: nft.nft_master,
+                price: nft.nft_master?.price,
+                user: member.display_id
+            });
         });
+    }
+
+    // NFT要件チェック
+    const approvedNft = member.nft_purchase_requests?.find(nft => {
+        const isApproved = nft.status === 'approved';
+        const price = Number(nft.nft_master?.price);
+        const meetsRequirement = price >= 1000;
+
+        console.log('NFT判定:', {
+            user: member.display_id,
+            isApproved,
+            price,
+            meetsRequirement
+        });
+
+        return isApproved && meetsRequirement;
+    });
+
+    if (!approvedNft) {
+        console.log('NFT要件未達成:', member.display_id);
         return 'NONE';
     }
 
-    // 傘下の投資額チェック
-    const teamInvestment = member.children.reduce((sum, child) => 
-        sum + child.total_team_investment, 0);
+    console.log('NFT要件達成:', {
+        user: member.display_id,
+        nft: approvedNft
+    });
 
-    // 足軽の判定（傘下の投資額が1000以上）
-    if (teamInvestment < 1000) {
-        console.log('Level check:', {
+    // 投資額要件チェック
+    if (member.max_line_investment >= 3000 && member.other_lines_investment >= 1500) {
+        console.log('武将要件達成:', {
             user: member.display_id,
-            result: 'none',
-            reason: 'Team investment < 1000',
-            teamInvestment
+            maxLine: member.max_line_investment,
+            otherLines: member.other_lines_investment
         });
-        return 'NONE';
-    }
-
-    // 上位レベルの判定
-    if (member.max_line_investment >= 3000 && 
-        member.other_lines_investment >= 1500) {
         return 'BUSHO';
     }
-    
-    return 'ASHIGARU';
-};
+
+    return 'NONE';
+}
 
 export const getLevelLabel = (member: OrganizationMember): string => {
-    // 既存のレベル判定ロジック
+    const level = calculateLevel(member)
+    return LEVEL_NAMES_JP[level] || 'なし'
+}
+
+// 報酬率の取得
+export const getShareRate = (member: OrganizationMember): number => {
+    const levelLabel = getLevelLabel(member);
+    for (const [key, value] of Object.entries(LEVEL_REQUIREMENTS)) {
+        if (LEVEL_NAMES_JP[key.toLowerCase() as keyof typeof LEVEL_NAMES_JP] === levelLabel) {
+            return value.shareRate;
+        }
+    }
+    return 0;
 }; 

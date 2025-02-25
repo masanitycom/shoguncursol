@@ -31,14 +31,16 @@ import { calculateWeeklyProfit, calculateProfitDisplayDate } from '@/lib/service
 import { WeeklyProfit, DailyProfit, isWeeklyProfit } from '@/types/dailyProfit';
 import { calculateUserStats } from '@/lib/utils/userLevel';
 import { LEVEL_NAMES_JP, getLevelLabel } from '@/lib/levelUtils';
-import { buildOrganizationTree } from '@/lib/organization';  // 新規追加
+import { buildOrganizationTree } from '@/lib/organization';
 import { fetchUserNFTs } from '@/lib/services/nft';
 import { useAuth } from '@/lib/auth'
 import { fetchPendingRewards } from '@/lib/services/reward'
 import { PendingRewards } from '@/types/reward'
 import { formatPrice } from '@/lib/utils'
 import { WeeklyProfit as ImportedWeeklyProfit } from '@/types/dailyProfit';
-import type { DashboardData } from '@/types/reward';
+import { startOfWeek, endOfWeek } from 'date-fns'; // 追加
+import { NFTPurchaseRequestData, NFTWithReward, NFTMaster } from '@/types/nft';
+import { NFTPurchaseRequest } from '@/types/nft';
 
 const DEFAULT_NFT_IMAGE = 'https://placehold.co/400x300/1f2937/ffffff?text=NFT'; // プレースホルダー画像を使用
 
@@ -53,7 +55,14 @@ interface NFTPurchaseRequest {
     status: string;
     created_at: string;
     approved_at: string | null;
-    nft_settings: NFTSettings;
+    nft_master: {  // nft_settingsをnft_masterに変更
+        id: string;
+        name: string;
+        price: number;
+        daily_rate: number;
+        image_url: string;
+        description?: string;
+    };
 }
 
 // 3. 表示用のNFT型
@@ -118,15 +127,6 @@ interface NFTQueryResult {
     };
 }
 
-interface NFTMaster {
-    id: string
-    name: string
-    price: number
-    daily_rate: number
-    image_url: string | null
-    description: string | null
-}
-
 interface UserNFT {
     nft_id: string
     nfts: NFTMaster  // 正しい型を参照
@@ -169,6 +169,9 @@ interface DashboardDataLocal {
     profile: UserProfile;
     nfts: NFTWithReward[];
     investmentInfo: InvestmentInfo;
+    nft_master?: {
+        price: number;
+    };
 }
 
 // レベルの日本語表示とスタイルを定義
@@ -377,6 +380,15 @@ interface NFTWithReward {
     status: string;
     approved_at: string | null;
     lastWeekReward: number;
+    nft_master: NFTMaster;
+}
+
+// dashboardDataの型を定義
+interface NFTPurchaseRequestData {
+    id: string;
+    nft_master: {
+        price: number;
+    };
 }
 
 export default function DashboardPage() {
@@ -391,7 +403,7 @@ export default function DashboardPage() {
     const [nfts, setNfts] = useState<ProcessedNFT[]>([])
     const [referralCount, setReferralCount] = useState(0)
     const [currentLevel, setCurrentLevel] = useState<string>('')
-    const [investmentInfo, setInvestmentInfo] = useState({
+    const [investmentInfo, setInvestmentInfo] = useState<InvestmentInfo>({
         investment_amount: 0,
         max_line_investment: 0,
         other_lines_investment: 0
@@ -403,7 +415,7 @@ export default function DashboardPage() {
         daily: 0,
         conquest: 0,
         total: 0
-    })
+    });
 
     const fetchNFTs = async () => {
         try {
@@ -635,7 +647,15 @@ export default function DashboardPage() {
             description: nft.nft_settings.description || '',
             status: nft.status,
             approved_at: nft.approved_at,
-            lastWeekReward: 0
+            lastWeekReward: 0,
+            nft_master: {
+                id: nft.nft_master.id,
+                name: nft.nft_master.name,
+                price: Number(nft.nft_master.price),
+                daily_rate: Number(nft.nft_master.daily_rate),
+                image_url: nft.nft_master.image_url || null,
+                description: nft.nft_master.description || null
+            }
         }));
     };
 
@@ -649,59 +669,48 @@ export default function DashboardPage() {
         try {
             setLoading(true);
 
-            const profile = await fetchUserProfile(userId);
-            if (!profile) {
-                setError('プロファイルの取得に失敗しました');
-                return null;
-            }
+            // プロフィール情報を取得
+            const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
 
+            if (profileError) throw profileError;
+
+            // NFT情報を取得
             const { data: nftData, error: nftError } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
                     id,
-                    user_id,
-                    nft_id,
                     status,
                     created_at,
                     approved_at,
-                    nft_settings (
+                    nft_master!inner (
                         id,
                         name,
                         price,
                         daily_rate,
-                        image_url,
-                        description
+                        image_url
                     )
                 `)
                 .eq('user_id', userId)
                 .eq('status', 'approved');
 
-            if (nftError) {
-                console.error('Error fetching NFT data:', nftError);
-                return {
-                    profile,
-                    nfts: [],
-                    investmentData: {
-                        investment_amount: profile.investment_amount || 0,
-                        max_line_investment: profile.max_line_investment || 0,
-                        other_lines_investment: profile.other_lines_investment || 0
-                    }
-                };
-            }
+            if (nftError) throw nftError;
 
             return {
                 profile,
-                nfts: processNFTData(nftData || []),
+                nfts: nftData || [],
                 investmentData: {
-                    investment_amount: profile.investment_amount || 0,
-                    max_line_investment: profile.max_line_investment || 0,
-                    other_lines_investment: profile.other_lines_investment || 0
+                    investment_amount: profile?.investment_amount || 0,
+                    max_line_investment: profile?.max_line_investment || 0,
+                    other_lines_investment: profile?.other_lines_investment || 0
                 }
             };
 
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
-            setError('データの取得に失敗しました');
             return null;
         } finally {
             setLoading(false);
@@ -710,21 +719,52 @@ export default function DashboardPage() {
 
     // useEffectを単一の関数に統合
     useEffect(() => {
-        const initializeDashboard = async () => {
-            if (!user?.id) return;
+        const loadDashboardData = async () => {
+            try {
+                if (!user?.id) return;
+                
+                const data = await fetchDashboardData(user.id);
+                if (!data) return;
 
-            const data = await fetchDashboardData(user.id);
-            if (!data) return;
+                // NFTデータを正しい形式に変換
+                const processedNFTs = data.nfts.map((nft: any): NFTWithReward => {
+                    const nftMaster: NFTMaster = {
+                        id: nft.nft_master.id,
+                        name: nft.nft_master.name,
+                        price: Number(nft.nft_master.price),
+                        daily_rate: Number(nft.nft_master.daily_rate),
+                        image_url: nft.nft_master.image_url || null,
+                        description: nft.nft_master.description || null
+                    };
 
-            setUserNFTs(data.nfts);
-            setInvestmentInfo(data.investmentData);
-            setCurrentLevel(calculateLevel(data.investmentData));
+                    return {
+                        id: nft.id,
+                        name: nft.nft_master.name,
+                        price: Number(nft.nft_master.price),
+                        daily_rate: Number(nft.nft_master.daily_rate),
+                        purchase_date: nft.approved_at || nft.created_at,
+                        reward_claimed: false,
+                        image_url: nft.nft_master.image_url || DEFAULT_NFT_IMAGE,
+                        description: nft.nft_master.description || '',
+                        status: nft.status,
+                        approved_at: nft.approved_at,
+                        lastWeekReward: 0,
+                        nft_master: nftMaster
+                    };
+                });
+
+                setUserNFTs(processedNFTs);
+                setInvestmentInfo(data.investmentData);
+                setCurrentLevel(calculateLevel(data.investmentData));
+
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                setError('データの読み込みに失敗しました');
+            }
         };
 
-        if (user?.id) {
-            initializeDashboard();
-        }
-    }, [user?.id]); // 依存配列を最小限に
+        loadDashboardData();
+    }, [user?.id]);
 
     // 総投資額を計算する関数を修正
     const calculateTotalInvestment = (nfts: NFT[]): number => {
@@ -735,10 +775,9 @@ export default function DashboardPage() {
         }, 0);
     };
 
-    // fetchUserLevelInfo関数を修正
+    // fetchUserLevelInfoの修正
     const fetchUserLevelInfo = async (userId: string) => {
         try {
-            // プロフィール情報を取得
             const { data: profile, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
@@ -750,27 +789,26 @@ export default function DashboardPage() {
                 return null;
             }
 
-            // ダッシュボードデータを取得
-            const { data: dashboardData } = await supabase
+            const { data: nftData } = await supabase
                 .from('nft_purchase_requests')
                 .select(`
                     id,
-                    nft_settings (
+                    nft_master!inner (
                         price
                     )
                 `)
                 .eq('user_id', userId)
                 .eq('status', 'approved');
 
-            // 投資額を計算
-            const totalInvestment = (dashboardData || []).reduce((sum, item) => 
-                sum + (item.nft_settings?.price || 0), 0);
+            const totalInvestment = (nftData || []).reduce((sum: number, item: any) => {
+                const price = Number(item.nft_master?.price) || 0;
+                return sum + price;
+            }, 0);
 
-            // レベル情報を返す
             return {
                 investment_amount: totalInvestment,
-                max_line_investment: 4000, // 仮の値
-                other_lines_investment: 3000 // 仮の値
+                max_line_investment: profile?.max_line_investment || 0,
+                other_lines_investment: profile?.other_lines_investment || 0
             };
 
         } catch (error) {
@@ -822,8 +860,8 @@ export default function DashboardPage() {
 
         const totalRewards = nftRequests.reduce((total, request) => {
             // nftsプロパティから価格と日利を取得
-            const price = Number(request.nft_settings.price);
-            const dailyRate = Number(request.nft_settings.daily_rate);
+            const price = Number(request.nft_master?.price);
+            const dailyRate = Number(request.nft_master?.daily_rate);
 
             if (!price || !dailyRate || !request.approved_at) return total;
 
@@ -834,7 +872,7 @@ export default function DashboardPage() {
             let currentDate = new Date(startDate);
 
             console.log('Processing NFT:', {
-                name: request.nft_settings.name,
+                name: request.nft_master?.name,
                 price: price,
                 dailyRate: dailyRate,
                 startDate: startDate.toISOString(),
@@ -946,46 +984,28 @@ export default function DashboardPage() {
 
     // useEffectの修正
     useEffect(() => {
-        const loadDashboardData = async () => {
+        let isMounted = true;
+
+        const fetchData = async () => {
+            if (!user?.id) return;
+            
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session?.user) {
-                    router.push('/login');
-                    return;
-                }
-
-                // プロフィールIDを取得
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('id')
-                    .eq('email', session.user.email)
-                    .single();
-
-                // 既存のfetchDashboardDataを使用
-                const data = profile?.id ? await fetchDashboardData(profile.id) : null;
-                if (data) {
-                    setDashboardData([{
-                        currentLevel: calculateUserLevel({
-                            personalInvestment: data.investmentData.investment_amount,
-                            maxLine: data.investmentData.max_line_investment,
-                            otherLines: data.investmentData.other_lines_investment
-                        }),
-                        maxLineInvestment: data.investmentData.max_line_investment,
-                        otherLinesInvestment: data.investmentData.other_lines_investment,
-                        personalInvestment: data.investmentData.investment_amount,
-                        nft_purchase_requests: [],  // 必要に応じて設定
-                        profile: data.profile,
-                        nfts: data.nfts,
-                        investmentInfo: data.investmentData
-                    }]);
+                const rewards = await fetchPendingRewards(user.id);
+                if (isMounted) {
+                    setPendingRewards(rewards);
+                    console.log('報酬を1回だけ設定:', rewards);
                 }
             } catch (error) {
-                console.error('Error loading dashboard:', error);
+                console.error('報酬取得エラー:', error);
             }
         };
 
-        loadDashboardData();
-    }, []);
+        fetchData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [user?.id]); // user.idのみを依存配列に
 
     // 次のレベルを計算する関数
     const getNextLevel = (currentLevel: string): string | null => {
@@ -1029,47 +1049,10 @@ export default function DashboardPage() {
         };
     }, [user?.id]);
 
+    // デバッグログの整理
     useEffect(() => {
-        if (user) {
-            loadPendingRewards()
-        }
-    }, [user])
-
-    const loadPendingRewards = async () => {
-        try {
-            if (!user?.id) return;
-            
-            const { data: authUser } = await supabase.auth.getUser();
-            if (!authUser?.user?.email) return;
-
-            // emailでプロファイルを検索
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('email', authUser.user.email)
-                .maybeSingle();
-
-            if (!profile) {
-                console.log('Profile not found, skipping rewards fetch');
-                setPendingRewards({
-                    daily: 0,
-                    conquest: 0,
-                    total: 0
-                });
-                return;
-            }
-
-            const rewards = await fetchPendingRewards(profile.id);
-            setPendingRewards(rewards);
-        } catch (error) {
-            console.error('Error loading pending rewards:', error);
-            setPendingRewards({
-                daily: 0,
-                conquest: 0,
-                total: 0
-            });
-        }
-    };
+        console.log('現在の報酬状態:', pendingRewards);
+    }, [pendingRewards]);
 
     // 次のレベルまでの条件を表示するコンポーネント
     const renderNextLevelRequirements = (investmentInfo: InvestmentInfo) => {
@@ -1167,6 +1150,77 @@ export default function DashboardPage() {
             return 0;
         }
     };
+
+    const calculateNFTRewards = useCallback(async (nft: NFTWithReward) => {
+        try {
+            // daily_ratesテーブルからデータ取得
+            const { data: dailyRates, error } = await supabase
+                .from('daily_rates')
+                .select('*')
+                .eq('nft_id', nft.nft_master.id)  // nft_masterのIDを使用
+                .gte('date', '2025-02-10')
+                .lte('date', '2025-02-14')
+                .order('date', { ascending: true });
+
+            if (error) {
+                console.error('日次レート取得エラー:', error);
+                console.error('NFT情報:', nft);
+                return {
+                    ...nft,
+                    lastWeekReward: 0
+                };
+            }
+
+            // デバッグ用のログ
+            console.log('NFT情報:', {
+                id: nft.id,
+                nft_master_id: nft.nft_master.id,
+                price: nft.price,
+                rates: dailyRates
+            });
+
+            if (!dailyRates || dailyRates.length === 0) {
+                console.log('該当期間のレートデータがありません');
+                return {
+                    ...nft,
+                    lastWeekReward: 0
+                };
+            }
+
+            // 各日の報酬を計算して合計
+            const totalReward = dailyRates.reduce((total, rate) => {
+                const dailyReward = nft.price * (Number(rate.rate) / 100);
+                console.log(`
+                    日付: ${rate.date}
+                    レート: ${rate.rate}%
+                    NFT価格: $${nft.price}
+                    日次報酬: $${dailyReward.toFixed(2)}
+                `);
+                return total + dailyReward;
+            }, 0);
+
+            const result = {
+                ...nft,
+                lastWeekReward: Number(totalReward.toFixed(2))
+            };
+
+            console.log('計算結果:', {
+                nftId: nft.id,
+                price: nft.price,
+                totalReward: result.lastWeekReward,
+                dailyRates: dailyRates
+            });
+
+            return result;
+
+        } catch (error) {
+            console.error('報酬計算エラー:', error);
+            return {
+                ...nft,
+                lastWeekReward: 0
+            };
+        }
+    }, []);
 
     if (!user) return null
 

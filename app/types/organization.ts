@@ -37,25 +37,16 @@ export interface OrganizationMember {
     display_id: string;
     name: string;
     email: string;
-    display_name: string;
     investment_amount: number;
     max_line_investment: number;
     other_lines_investment: number;
-    total_team_investment: number;
-    referrer_id: string | null;
-    children: OrganizationMember[];
+    total_investment: number;
     nft_purchase_requests: {
         id: string;
-        status: string;
-        created_at: string;
-        approved_at: string | null;
-        nft_settings: {
-            id: string;
-            name: string;
+        status: 'approved' | 'pending' | 'rejected';
+        nft_master: {
             price: number;
-            daily_rate: number;
-            image_url: string | null;
-            description: string | null;
         };
     }[];
+    children: OrganizationMember[];
 } 

@@ -1,4 +1,5 @@
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { NFTOperationStatus } from '@/types/nft';
 import { calculateNFTSchedule } from '@/types/nft';
 import { useMemo } from 'react';
@@ -35,6 +36,10 @@ export function NFTCard({ nft }: NFTCardProps) {
     return '0.00';
   }, [nft.lastWeekReward]);
 
+  const formattedDate = nft.purchase_date ? 
+    format(parseISO(nft.purchase_date), 'yyyy年MM月dd日', { locale: ja }) : 
+    '日付なし';
+
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden">
       <div className="aspect-w-1 aspect-h-1">
@@ -59,7 +64,7 @@ export function NFTCard({ nft }: NFTCardProps) {
         </div>
         
         <div className="text-sm text-gray-400">
-          <p>購入日: {format(new Date(nft.purchase_date), 'yyyy/MM/dd')}</p>
+          <p>購入日: {formattedDate}</p>
           <p>運用開始日: {format(schedule.operationStartDate, 'yyyy/MM/dd')}</p>
           <p>日利上限: {(nft.daily_rate * 100).toFixed(2)}%</p>
           <p>先週の報酬: ${formattedReward}</p>

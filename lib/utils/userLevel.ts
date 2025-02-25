@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { LEVELS, LEVEL_REQUIREMENTS } from '@/lib/constants/levels';
+import { LEVELS, LEVEL_REQUIREMENTS, type LevelRequirements, type LevelRequirement, type LevelKey } from '@/lib/constants/levels';
 import type { LevelStats, UserLevelParams } from '@/types/user';
 
 // NFTの設定情報の型
@@ -25,6 +25,16 @@ export interface UserLevelResult {
         otherLines: number;
         totalInvestment: number;
     };
+}
+
+// プロファイルの型定義
+interface Profile {
+    id: string;
+    email: string;
+    investment_amount: number;
+    max_line_investment: number;
+    other_lines_investment: number;
+    level: string;
 }
 
 /**
@@ -68,35 +78,49 @@ export function calculateUserStats(params: UserLevelParams): LevelStats {
     return stats;
 }
 
-// ユーザーレベルを計算
-export const calculateUserLevel = async (userId: string): Promise<UserLevelResult> => {
-    try {
-        // ユーザーの投資情報を取得
-        const { data: userData, error } = await supabase
-            .from('users')
-            .select('investment_amount, max_line_investment, other_lines_investment')
-            .eq('id', userId)
-            .single();
+interface UserInvestment {
+    readonly nftAmount: number;              // SHOGUN NFT保有額
+    readonly maxLineInvestment: number;      // 最大系列の投資額
+    readonly otherLinesInvestment: number;   // 他系列の投資額
+}
 
-        if (error) throw error;
+export const calculateUserLevel = (investment: UserInvestment): LevelKey | 'NONE' => {
+    console.log('レベル判定入力:', {
+        nftAmount: investment.nftAmount,
+        maxLine: investment.maxLineInvestment,
+        otherLines: investment.otherLinesInvestment
+    });
 
-        const stats = calculateUserStats({
-            personalInvestment: Number(userData.investment_amount) || 0,
-            maxLine: Number(userData.max_line_investment) || 0,
-            otherLines: Number(userData.other_lines_investment) || 0
+    // SHOGUN NFT 1000未満の場合はNONE
+    if (investment.nftAmount < LEVEL_REQUIREMENTS.ASHIGARU.minNFT) {
+        console.log('NFT条件未達：', investment.nftAmount);
+        return 'NONE';
+    }
+
+    // 低いレベルから順に判定（ASHIGARUから）
+    const levels = Object.entries(LEVEL_REQUIREMENTS) as [LevelKey, LevelRequirement][];
+    
+    for (const [level, requirements] of levels) {
+        const isLevelAchieved = 
+            investment.maxLineInvestment >= requirements.maxLine &&
+            investment.otherLinesInvestment >= requirements.otherLines;
+
+        console.log(`${level}レベル判定:`, {
+            required: {
+                maxLine: requirements.maxLine,
+                otherLines: requirements.otherLines
+            },
+            actual: {
+                maxLine: investment.maxLineInvestment,
+                otherLines: investment.otherLinesInvestment
+            },
+            achieved: isLevelAchieved
         });
 
-        return {
-            level: stats.currentLevel || '--',
-            stats: {
-                personalInvestment: stats.personalInvestment,
-                maxLine: stats.maxLine,
-                otherLines: stats.otherLines,
-                totalInvestment: stats.totalInvestment || 0
-            }
-        };
-    } catch (error) {
-        console.error('Error in calculateUserLevel:', error);
-        throw error;
+        if (isLevelAchieved) {
+            return level;
+        }
     }
+
+    return 'NONE';
 }; 

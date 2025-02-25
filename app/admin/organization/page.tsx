@@ -7,6 +7,8 @@ import Header from '@/components/Header'
 import AdminSidebar from '@/components/AdminSidebar'
 import { TreeChart } from '@/app/organization/components/TreeChart'
 import { useAuth } from '@/lib/auth'
+import { OrganizationMember } from '@/lib/organization/types'
+import { calculateUserLevel } from '@/lib/utils/userLevel'
 
 interface Member {
     id: string;
@@ -210,7 +212,7 @@ const calculateInvestmentLines = (node: any, profiles: any[]): {
 export default function AdminOrganizationPage() {
     const router = useRouter()
     const { handleLogout, user } = useAuth()
-    const [organization, setOrganization] = useState<Member[] | null>(null)
+    const [users, setUsers] = useState<OrganizationMember[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [stats, setStats] = useState({
@@ -218,133 +220,97 @@ export default function AdminOrganizationPage() {
         totalUsers: 0
     })
 
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                // 全ユーザーのプロフィールを取得
-                const { data: profiles, error: profileError } = await supabase
-                    .from('profiles')
-                    .select(`
-                        *,
-                        nft_purchase_requests (
-                            id,
-                            status,
-                            nft_settings (
-                                id,
-                                name,
-                                price
-                            )
-                        )
-                    `)
+    // 組織ツリーを構築する関数
+    const buildTree = (user: any, allProfiles: any[]): OrganizationMember => {
+        const children = allProfiles.filter(p => p.referrer_id === user.id);
+        
+        // NFTの投資額を計算
+        const nftAmount = user.nft_purchase_requests
+            ?.filter(req => req.status === 'approved')
+            .reduce((sum, req) => sum + Number(req.nft_master?.price || 0), 0) || 0;
 
-                if (profileError) throw profileError
-                
-                // デバッグ用にデータを出力
-                console.log('User data with referrers:', profiles)
+        // 最大系列と他系列の投資額を取得
+        const maxLineInvestment = Number(user.max_line_investment) || 0;
+        const otherLinesInvestment = Number(user.other_lines_investment) || 0;
 
-                // 組織ツリーを構築
-                const organizationTree = await buildOrganizationTree(profiles)
-                
-                // 統計情報の計算を修正
-                const stats = calculateTotalStats(organizationTree);
-                setStats({
-                    totalInvestment: stats.investment,
-                    totalUsers: stats.users
-                });
+        console.log(`${user.display_id}の投資額:`, {
+            nft: nftAmount,
+            maxLine: maxLineInvestment,
+            otherLines: otherLinesInvestment
+        });
 
-                setOrganization(organizationTree)
-            } catch (error) {
-                console.error('Error fetching users:', error)
-                setError('Failed to fetch organization data')
-            } finally {
-                setLoading(false)
-            }
-        }
+        // レベルを計算
+        const level = calculateUserLevel({
+            nftAmount,
+            maxLineInvestment,
+            otherLinesInvestment
+        });
 
-        fetchUsers()
-    }, [])
+        return {
+            id: user.id,
+            display_id: user.display_id || '',
+            name: user.name || '',
+            email: user.email || '',
+            level,
+            investment_amount: nftAmount,
+            max_line_investment: maxLineInvestment,
+            other_lines_investment: otherLinesInvestment,
+            referrer_id: user.referrer_id,
+            nft_purchase_requests: user.nft_purchase_requests || [],
+            children: children.map(child => buildTree(child, allProfiles))
+        };
+    };
 
-    const buildOrganizationTree = async (profiles: any[]): Promise<Member[]> => {
+    const calculateTotalStats = (users: OrganizationMember[]) => {
+        let totalInvestment = 0;
+        let totalUsers = 0;
+
+        const traverse = (user: OrganizationMember) => {
+            totalInvestment += user.investment_amount;
+            totalUsers += 1;
+            user.children?.forEach(traverse);
+        };
+
+        users.forEach(traverse);
+        return { totalInvestment, totalUsers };
+    };
+
+    const fetchUsers = async () => {
         try {
-            // ルートノード（referrer_idがnull）を見つける
-            const rootNodes = profiles.filter(p => !p.referrer_id)
+            const { data: profiles, error } = await supabase
+                .from('profiles')
+                .select(`
+                    *,
+                    nft_purchase_requests (
+                        id,
+                        status,
+                        nft_id,
+                        nft_master!nft_id (
+                            id,
+                            name,
+                            price
+                        )
+                    )
+                `)
+                .eq('status', 'active');
 
-            const buildTree = async (node: any): Promise<Member> => {
-                // デバッグ: 現在処理中のノード
-                console.log('Building tree for node:', node.display_id);
+            if (error) throw error;
 
-                const children = await Promise.all(
-                    profiles
-                        .filter(p => p.referrer_id === node.id)
-                        .map(child => buildTree(child))
-                )
+            const rootUsers = profiles.filter(p => !p.referrer_id);
+            const organizationTree = rootUsers.map(user => buildTree(user, profiles));
+            
+            const totalStats = calculateTotalStats(organizationTree);
+            setStats(totalStats);
+            setUsers(organizationTree);
 
-                // NFTデータはすでにプロフィールに含まれている
-                const nftData = node.nft_purchase_requests || [];
-                
-                // 投資額を計算（型を追加）
-                const investment = nftData
-                    .filter((nft: { status: string }) => nft.status === 'approved')
-                    .reduce((sum: number, nft: { nft_settings: { price: number } }) => {
-                        return sum + Number(nft.nft_settings?.price || 0);
-                    }, 0);
-
-                console.log(`Investment calculation for ${node.display_id}:`, {
-                    nftData,
-                    investment,
-                    status: nftData.map((nft: NFTData) => nft.status)
-                });
-
-                // 子ノードの投資額を合算
-                const childrenInvestment = children.reduce((sum, child) => 
-                    sum + (child.investment_amount || 0), 0);
-                
-                // デバッグ: 子ノードの投資額
-                console.log(`Children investment for ${node.display_id}:`, childrenInvestment);
-
-                const totalTeamInvestment = investment + childrenInvestment;
-
-                // デバッグ: 合計チーム投資額
-                console.log(`Total team investment for ${node.display_id}:`, totalTeamInvestment);
-
-                // 投資ラインを計算
-                const { maxLine, otherLines } = calculateInvestmentLines(node, profiles);
-
-                // レベルを非同期で取得
-                const level = await calculateLevel({
-                    ...node,
-                    investment_amount: investment,
-                    max_line_investment: maxLine,
-                    other_lines_investment: otherLines,
-                    total_team_investment: totalTeamInvestment,
-                    children: children
-                });
-
-                console.log(`Setting level for ${node.display_id}:`, level); // デバッグ用
-
-                return {
-                    id: node.id,
-                    display_id: node.display_id,
-                    name: node.name || node.display_id,
-                    name_kana: node.name_kana || '',
-                    email: node.email || '',
-                    display_name: node.display_name || '',
-                    level: level,
-                    investment_amount: investment,
-                    max_line_investment: maxLine,
-                    other_lines_investment: otherLines,
-                    total_team_investment: totalTeamInvestment,
-                    referrer_id: node.referrer_id,
-                    children: children
-                }
-            }
-
-            return await Promise.all(rootNodes.map(node => buildTree(node)))
         } catch (error) {
-            console.error('Error building organization tree:', error)
-            throw error
+            console.error('Error fetching users:', error);
         }
-    }
+    };
+
+    useEffect(() => {
+        fetchUsers();
+    }, []);
 
     return (
         <div className="min-h-screen bg-gray-900">
@@ -372,8 +338,8 @@ export default function AdminOrganizationPage() {
                         </div>
                     </div>
                     <div className="min-w-max space-y-8">
-                        {organization && Array.isArray(organization) ? (
-                            organization.map(member => (
+                        {users && Array.isArray(users) ? (
+                            users.map(member => (
                                 <TreeChart 
                                     key={member.id} 
                                     member={member}

@@ -8,14 +8,12 @@ import NFTList from './NFTList'
 import { useAuth } from '@/lib/auth'
 
 interface NFT {
-    id: string
-    name: string
-    price: number
-    daily_rate: number
-    description?: string
-    image_url?: string
-    special: boolean
-    status: string
+    id: string;
+    name: string;
+    price: number;
+    daily_rate: number;
+    image_url?: string;
+    status: string;
 }
 
 interface NFTPurchaseRequest {
@@ -112,46 +110,31 @@ export default function NFTPurchasePage() {
 
     const fetchNFTs = async () => {
         try {
-            // 重複を除外して通常のNFTのみを取得
-            const { data: nfts, error } = await supabase
-                .from('nft_settings')
+            console.log('Fetching NFTs...');
+            
+            const { data, error } = await supabase
+                .from('nft_master')
                 .select(`
                     id,
                     name,
                     price,
                     daily_rate,
                     image_url,
-                    description,
-                    status
+                    status,
+                    is_special
                 `)
                 .eq('status', 'active')
-                .not('price', 'in', '(100,200,600,1177,1300,1500,2000,6600,8000)')  // 文字列として渡す
-                .order('price')
+                .eq('is_special', false)  // 通常NFTのみ
+                .order('price', { ascending: true });  // 価格順に並べる
 
-            if (error) throw error
-
-            // ユニークな価格のNFTのみを取得
-            const uniqueNfts = nfts.filter((nft, index, self) =>
-                index === self.findIndex((t) => t.price === nft.price)
-            );
-
-            const formattedNfts = uniqueNfts.map(nft => ({
-                id: nft.id,
-                name: nft.name,
-                price: Number(nft.price),
-                daily_rate: Number(nft.daily_rate),
-                description: nft.description,
-                image_url: nft.image_url ?? undefined,
-                special: false,
-                status: nft.status
-            }))
-
-            setNfts(formattedNfts)
-        } catch (error: any) {
-            console.error('Error fetching NFTs:', error)
-            setError('NFTの取得に失敗しました')
+            if (error) throw error;
+            console.log('Retrieved NFTs:', data);
+            setNfts(data);
+        } catch (error) {
+            console.error('Error fetching NFTs:', error);
+            setError('NFTの取得に失敗しました');
         }
-    }
+    };
 
     const fetchPaymentMessage = async () => {
         try {

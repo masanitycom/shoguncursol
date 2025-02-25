@@ -10,12 +10,19 @@ import { formatPrice } from '@/lib/utils'
 import { message, Modal } from 'antd'
 import { WeeklyProfit } from '@/types/reward'
 
+interface EditingProfit {
+    week_start: string;
+    week_end: string;
+    total_profit: number;
+    share_rate: number;
+}
+
 export default function WeeklyProfitsManage() {
     const router = useRouter()
     const { user, handleLogout } = useAuth()
     const [profits, setProfits] = useState<WeeklyProfit[]>([])
     const [loading, setLoading] = useState(true)
-    const [editingProfit, setEditingProfit] = useState<WeeklyProfit | null>(null)
+    const [editingProfit, setEditingProfit] = useState<EditingProfit | null>(null)
 
     useEffect(() => {
         fetchProfits()
@@ -39,7 +46,12 @@ export default function WeeklyProfitsManage() {
     }
 
     const handleEdit = (profit: WeeklyProfit) => {
-        setEditingProfit(profit)
+        setEditingProfit({
+            week_start: profit.week_start.toISOString().split('T')[0],
+            week_end: profit.week_end.toISOString().split('T')[0],
+            total_profit: profit.total_profit,
+            share_rate: profit.share_rate
+        })
     }
 
     const handleDelete = async (id: string) => {
@@ -170,7 +182,7 @@ export default function WeeklyProfitsManage() {
                             <label className="block text-sm font-medium text-gray-700">開始日</label>
                             <input
                                 type="date"
-                                value={new Date(editingProfit.week_start).toISOString().split('T')[0]}
+                                value={editingProfit.week_start}
                                 onChange={e => setEditingProfit({
                                     ...editingProfit,
                                     week_start: e.target.value
@@ -182,7 +194,7 @@ export default function WeeklyProfitsManage() {
                             <label className="block text-sm font-medium text-gray-700">終了日</label>
                             <input
                                 type="date"
-                                value={new Date(editingProfit.week_end).toISOString().split('T')[0]}
+                                value={editingProfit.week_end}
                                 onChange={e => setEditingProfit({
                                     ...editingProfit,
                                     week_end: e.target.value

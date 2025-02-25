@@ -25,7 +25,7 @@ export default function NewNFTPage() {
     const [formData, setFormData] = useState<NFTForm>({
         name: '',
         price: 300,
-        daily_rate: 0.005, // 0.5%
+        daily_rate: 0.005,
         image_url: null,
         is_special: false
     })
@@ -44,49 +44,10 @@ export default function NewNFTPage() {
     }
 
     const validateForm = (): string | null => {
-        console.log('Validating form:', {
-            ...formData,
-            price: formData.price,
-            priceType: typeof formData.price,
-            isSpecial: formData.is_special
-        })
-
         if (!formData.name) return 'NFT名は必須です'
         if (!formData.price && formData.price !== 0) return '価格は必須です'
         if (!formData.daily_rate) return '日利は必須です'
         if (!imageFile && !formData.image_url) return '画像は必須です'
-
-        const price = Number(formData.price)
-        console.log('Converted price:', {
-            price,
-            priceType: typeof price,
-            isSpecial: formData.is_special
-        })
-
-        // 特例NFTの価格チェック
-        if (formData.is_special) {
-            const specialPrices = [100, 200, 600, 1177, 1300, 1500, 2000, 6600, 8000]
-            console.log('Checking special price:', {
-                price,
-                specialPrices,
-                includes: specialPrices.includes(price),
-                isSpecial: formData.is_special
-            })
-            
-            if (!specialPrices.includes(price)) {
-                console.log('Invalid special price')
-                return '特例NFTの価格が不正です'
-            }
-            return null
-        }
-
-        // 通常NFTの価格チェック
-        const validPrices = [300, 500, 1000, 3000, 5000, 10000, 30000, 100000]
-        if (!validPrices.includes(price)) {
-            console.log('Invalid regular price')
-            return '通常NFTの価格が不正です'
-        }
-
         return null
     }
 
@@ -119,70 +80,41 @@ export default function NewNFTPage() {
 
     const getDefaultDailyRate = (price: number, isSpecial: boolean): number => {
         if (isSpecial) {
-            if (price <= 600) return 0.005 // 0.5%
-            if (price <= 5000) return 0.01 // 1%
-            if (price === 1000) return 0.0125 // 1.25% (特別対応)
-            return 0.0125 // 6600以上は1.25%
+            // 特例NFTの特別ケース
+            if (price === 1000 || price === 10000) return 0.0125  // 1.25%
+            if (price <= 600) return 0.005  // 0.5%
+            return 0.01  // その他は1.0%
         }
 
         // 通常NFT
-        if (price <= 500) return 0.005 // 0.5%
-        if (price <= 5000) return 0.01 // 1%
-        if (price === 10000) return 0.0125 // 1.25%
-        if (price === 30000) return 0.015 // 1.5%
-        if (price === 50000) return 0.0175 // 1.75%
-        return 0.02 // 100,000は2%
+        if (price <= 500) return 0.005    // 0.5%
+        if (price <= 5000) return 0.01    // 1.0%
+        if (price <= 10000) return 0.0125 // 1.25%
+        if (price <= 30000) return 0.015  // 1.5%
+        if (price <= 50000) return 0.0175 // 1.75%
+        return 0.02 // 2.0%
     }
 
-    // priceが変更されたときに日利を自動設定
-    const handlePriceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newPrice = Number(e.target.value)
-        console.log('Price change:', {
-            value: e.target.value,
-            newPrice,
-            priceType: typeof newPrice
-        })
-        
         const newDailyRate = getDefaultDailyRate(newPrice, formData.is_special)
-        
-        // 直接オブジェクトを作成して更新
-        const updatedData = {
+        setFormData({
             ...formData,
             price: newPrice,
             daily_rate: newDailyRate
-        }
-        
-        console.log('Updated form data:', updatedData)
-        setFormData(updatedData)
+        })
     }
 
-    // 特例NFTの切り替え時に日利を再計算
     const handleSpecialChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const checkbox = e.target as unknown as { checked: boolean }
-        const isSpecial = checkbox.checked
-        console.log('Special change:', isSpecial)
-        
-        // 特例NFTに切り替えた時は、デフォルトで100USDTを選択
-        const newPrice = isSpecial ? 100 : 300
+        const isSpecial = e.target.checked
+        const newPrice = formData.price
         const newDailyRate = getDefaultDailyRate(newPrice, isSpecial)
         
-        console.log('New special price:', {
-            isSpecial,
-            newPrice,
-            newDailyRate,
-            priceType: typeof newPrice
-        })
-        
-        // 直接オブジェクトを作成して更新
-        const updatedData = {
+        setFormData({
             ...formData,
             is_special: isSpecial,
-            price: newPrice,
             daily_rate: newDailyRate
-        }
-        
-        console.log('Updated form data:', updatedData)
-        setFormData(updatedData)
+        })
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -273,36 +205,21 @@ export default function NewNFTPage() {
                                 <label className="block text-gray-300 mb-2">
                                     価格（USDT） <span className="text-red-500">*</span>
                                 </label>
-                                <select
-                                    value={String(formData.price)}
-                                    onChange={handlePriceChange}
-                                    className="w-full bg-gray-700 text-white px-4 py-2 rounded"
-                                >
-                                    {formData.is_special ? (
-                                        <>
-                                            <option value="100">100 USDT</option>
-                                            <option value="200">200 USDT</option>
-                                            <option value="600">600 USDT</option>
-                                            <option value="1177">1,177 USDT</option>
-                                            <option value="1300">1,300 USDT</option>
-                                            <option value="1500">1,500 USDT</option>
-                                            <option value="2000">2,000 USDT</option>
-                                            <option value="6600">6,600 USDT</option>
-                                            <option value="8000">8,000 USDT</option>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <option value="300">300 USDT</option>
-                                            <option value="500">500 USDT</option>
-                                            <option value="1000">1,000 USDT</option>
-                                            <option value="3000">3,000 USDT</option>
-                                            <option value="5000">5,000 USDT</option>
-                                            <option value="10000">10,000 USDT</option>
-                                            <option value="30000">30,000 USDT</option>
-                                            <option value="100000">100,000 USDT</option>
-                                        </>
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="number"
+                                        value={formData.price}
+                                        onChange={handlePriceChange}
+                                        className="w-full bg-gray-700 text-white px-4 py-2 rounded"
+                                        placeholder="価格を入力"
+                                    />
+                                    {formData.is_special && (
+                                        <div className="text-sm text-gray-400">
+                                            日利: {formData.price === 1000 || formData.price === 10000 ? '1.25%' : 
+                                                  formData.price <= 600 ? '0.5%' : '1.0%'}
+                                        </div>
                                     )}
-                                </select>
+                                </div>
                             </div>
 
                             <div className="mb-4">

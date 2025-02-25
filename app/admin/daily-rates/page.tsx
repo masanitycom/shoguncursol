@@ -10,7 +10,8 @@ interface NFT {
     id: string
     name: string
     price: number
-    daily_rate: number // 上限値
+    daily_rate: number
+    is_special: boolean
 }
 
 // 日利データの型を修正
@@ -119,9 +120,10 @@ export default function DailyRatesPage() {
     const fetchNFTs = async () => {
         try {
             const { data, error } = await supabase
-                .from('nft_settings')
+                .from('nft_master')
                 .select('*')
-                .order('price', { ascending: true })
+                .eq('status', 'active')
+                .order('price')
 
             if (error) throw error
             setNfts(data || [])
@@ -381,6 +383,8 @@ export default function DailyRatesPage() {
                                 <thead>
                                     <tr className="bg-gray-700">
                                         <th className="px-6 py-3 text-left text-white">NFT</th>
+                                        <th className="px-6 py-3 text-left text-white">種別</th>
+                                        <th className="px-6 py-3 text-left text-white">価格</th>
                                         <th className="px-6 py-3 text-left text-white">上限</th>
                                         {dailyRates.map(day => (
                                             <th key={day.date} className="px-6 py-3 text-left text-white">
@@ -394,6 +398,12 @@ export default function DailyRatesPage() {
                                         <tr key={nft.id} className="hover:bg-gray-750">
                                             <td className="px-6 py-4 text-white">
                                                 {nft.name}
+                                            </td>
+                                            <td className="px-6 py-4 text-white">
+                                                {nft.is_special ? '特例' : '通常'}
+                                            </td>
+                                            <td className="px-6 py-4 text-white">
+                                                ${nft.price.toLocaleString()}
                                             </td>
                                             <td className="px-6 py-4 text-white">
                                                 {(nft.daily_rate * 100).toFixed(2)}%
